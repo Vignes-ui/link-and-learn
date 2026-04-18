@@ -16,7 +16,7 @@ export default function ProtectedRoute({ children, allowedRoles }) {
 
   // 🔹 Role check (RBAC)
   if (allowedRoles && !allowedRoles.includes(userRole)) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/feed" replace />;
   }
 
   return children;

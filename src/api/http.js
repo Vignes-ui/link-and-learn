@@ -7,6 +7,10 @@ export class ApiError extends Error {
   }
 }
 
+// In development: Vite proxies /api → XAMPP (localhost:8080)
+// In production:  VITE_API_BASE = your live PHP host (e.g. https://yoursite.infinityfree.com)
+const BASE = import.meta.env.VITE_API_BASE || '';
+
 async function parseJsonSafe(res) {
   const text = await res.text();
   if (!text) return null;
@@ -14,7 +18,7 @@ async function parseJsonSafe(res) {
 }
 
 export async function apiFetch(path, { method = 'GET', headers, body } = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(BASE + path, {
     method,
     headers: {
       ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
@@ -31,6 +35,7 @@ export async function apiFetch(path, { method = 'GET', headers, body } = {}) {
   }
   return payload;
 }
+
 
 export function poll(fn, intervalMs = 4000) {
   let cancelled = false;

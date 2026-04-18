@@ -65,7 +65,7 @@ if ($path === '/api/users/me' && $method === 'GET') {
 if ($path === '/api/users/me' && $method === 'PATCH') {
   $me = Auth::requireUser();
   $body = Http::jsonBody();
-  $updated = Auth::updateMe($me['id'], $body);
+  $updated = Auth::updateMe((int)$me['id'], $body);
   Http::json(['user' => $updated]);
 }
 
@@ -74,7 +74,7 @@ if ($path === '/api/users/me/catalogue' && $method === 'PATCH') {
   $body = Http::jsonBody();
   $catalogue = $body['catalogue'] ?? null;
   if (!is_array($catalogue)) Http::json(['error' => 'catalogue must be array'], 400);
-  $updated = Auth::updateMe($me['id'], ['catalogue' => $catalogue]);
+  $updated = Auth::updateMe((int)$me['id'], ['catalogue' => $catalogue]);
   Http::json(['user' => $updated]);
 }
 
@@ -93,7 +93,7 @@ if ($path === '/api/users/search' && $method === 'GET') {
 if ($path === '/api/uploads/avatar' && $method === 'POST') {
   $me = Auth::requireUser();
   $url = Http::handleUpload('file', 'avatars/' . $me['id']);
-  $updated = Auth::updateMe($me['id'], ['avatar_url' => $url]);
+  $updated = Auth::updateMe((int)$me['id'], ['avatar_url' => $url]);
   Http::json(['url' => $url, 'user' => $updated]);
 }
 
@@ -102,7 +102,7 @@ if ($path === '/api/uploads/certificate' && $method === 'POST') {
   $degree = trim((string)($_POST['degree'] ?? ''));
   if ($degree === '') Http::json(['error' => 'degree required'], 400);
   $url = Http::handleUpload('file', 'certificates/' . $me['id']);
-  $updated = Auth::appendCertificate($me['id'], [
+  $updated = Auth::appendCertificate((int)$me['id'], [
     'degree' => $degree,
     'fileUrl' => $url,
     'fileName' => Http::uploadedOriginalName('file'),
@@ -234,9 +234,66 @@ if ($path === '/api/articles' && $method === 'POST') {
   $tags = $body['tags'] ?? [];
   if ($title === '' || trim($content) === '') Http::json(['error' => 'title/content required'], 400);
   if (!is_array($tags)) $tags = [];
+
+  // Hugging Face AI Content Detection
+  $hfToken = LinkLearn\Env::get('HF_API_TOKEN', '');
+  $aiScore = null;
+  $aiCategory = null;
+
+  if ($hfToken) {
+    $ch = curl_init('https://api-inference.huggingface.co/models/roberta-base-openai-detector');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    // Limit content length to prevent token limits
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode(['inputs' => substr($content, 0, 1000)]));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $hfToken,
+        'Content-Type: application/json'
+    ]);
+    
+    $res = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($status === 200 && $res) {
+        $data = json_decode($res, true);
+        if (is_array($data) && isset($data[0])) {
+            $isFake = false;
+            foreach ($data[0] as $pred) {
+                // Models typically return 'Fake' and 'Real' labels
+                if ($pred['label'] === 'Fake') {
+                    $aiScore = $pred['score'];
+                    $isFake = true;
+                }
+            }
+            $aiCategory = $isFake && $aiScore > 0.5 ? 'AI-Generated' : 'Human-Written';
+        }
+    }
+  } else {
+    // Demo Mock: Assign random high AI score if text contains specific keywords, else human
+    $lowerContent = strtolower($content);
+    if (str_contains($lowerContent, 'delve') || str_contains($lowerContent, 'test ai')) {
+        $aiScore = 0.92;
+        $aiCategory = 'AI-Generated (Mock)';
+    } else {
+        $aiScore = 0.12;
+        $aiCategory = 'Human-Written (Mock)';
+    }
+  }
+
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("INSERT INTO articles (user_id, author_name, author_role, title, content, category, tags_json, status) VALUES (?,?,?,?,?,?,?, 'pending')");
-  $stmt->execute([(int)$me['id'], $me['name'], $me['role'], $title, $content, $category, json_encode($tags)]);
+  $stmt = $pdo->prepare("INSERT INTO articles (user_id, author_name, author_role, title, content, category, tags_json, status, ai_score, ai_category) VALUES (?,?,?,?,?,?,?, 'pending', ?, ?)");
+  $stmt->execute([
+    (int)$me['id'], 
+    $me['name'], 
+    $me['role'], 
+    $title, 
+    $content, 
+    $category, 
+    json_encode($tags),
+    $aiScore,
+    $aiCategory
+  ]);
   Http::json(['ok' => true, 'id' => (string)$pdo->lastInsertId()]);
 }
 
@@ -575,7 +632,7 @@ if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method =
   $me = Auth::requireUser();
   $otherId = (int)$m[1];
   $pdo = Db::pdo();
-  $convId = Auth::ensureConversation((int)$me['id'], $otherId);
+  $convId = Auth::ensureConversation((int)$me['id'], $otherId); // cast already correct
   $stmt = $pdo->prepare("SELECT * FROM messages WHERE conversation_id=? ORDER BY created_at ASC LIMIT 500");
   $stmt->execute([$convId]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);

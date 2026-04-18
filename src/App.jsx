@@ -1,10 +1,9 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // Auth
 import AuthPage from './pages/auth/AuthPage';
 
 // Profile
-import Dashboard from './pages/profile/Dashboard';
 import Profile from './pages/profile/Profile';
 import ProfileSetup from './pages/profile/ProfileSetup';
 
@@ -37,14 +36,8 @@ function App() {
           </ProtectedRoute>
         } />
 
-        {/* Dashboard */}
-        <Route path="/dashboard" element={
-          <ProtectedRoute>
-            <ProfileGuard>
-              <Layout><Dashboard /></Layout>
-            </ProfileGuard>
-          </ProtectedRoute>
-        } />
+        {/* /dashboard → redirect to /feed */}
+        <Route path="/dashboard" element={<Navigate to="/feed" replace />} />
 
         {/* Profile */}
         <Route path="/profile" element={

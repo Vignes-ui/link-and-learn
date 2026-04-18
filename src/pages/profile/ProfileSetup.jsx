@@ -2,9 +2,10 @@ import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { updateProfile } from '../../api/profile';
 import { useNavigate } from 'react-router-dom';
+import { Sparkles, Building2, UserCircle, Clock, ArrowRight } from 'lucide-react';
 
 export default function ProfileSetup() {
-  const { currentUser, userData } = useAuth();
+  const { currentUser, userData, refreshUser } = useAuth();
   const [name, setName] = useState(userData?.name || '');
   const [bio, setBio] = useState('');
   const [loading, setLoading] = useState(false);
@@ -19,7 +20,8 @@ export default function ProfileSetup() {
         bio,
         profileCompleted: true,
       });
-      navigate('/dashboard');
+      await refreshUser();
+      navigate('/feed');
     } catch (err) {
       alert('Error saving profile: ' + err.message);
     } finally {
@@ -30,56 +32,113 @@ export default function ProfileSetup() {
   const isInstitutional = ['institution','govt_body','ngo','vendor','advertiser'].includes(userData?.role);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
-            <span className="text-3xl">👋</span>
+    <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6] p-4 relative overflow-hidden">
+      {/* Ambient background blobs */}
+      <div className="absolute top-[-15%] right-[-10%] w-[45%] h-[45%] bg-primary-200 rounded-full blur-[120px] opacity-30 pointer-events-none" />
+      <div className="absolute bottom-[-10%] left-[-8%] w-[35%] h-[35%] bg-slate-200 rounded-full blur-[100px] opacity-40 pointer-events-none" />
+      <div className="absolute top-[40%] left-[5%] w-[20%] h-[20%] bg-indigo-100 rounded-full blur-[80px] opacity-30 pointer-events-none" />
+
+      <div className="w-full max-w-lg animate-fade-in">
+        {/* Card */}
+        <div className="bg-white/70 backdrop-blur-xl rounded-[2rem] shadow-xl border border-white/80 overflow-hidden">
+
+          {/* Top accent stripe */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-primary-400 via-primary-600 to-indigo-500" />
+
+          <div className="p-8 sm:p-10">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-500/30">
+                <Sparkles className="w-8 h-8 text-white" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-display font-bold text-slate-900 tracking-tight">
+                Welcome to Link & Learn
+              </h1>
+              <p className="text-slate-500 text-sm mt-2 font-medium">
+                Let's complete your profile to get started
+              </p>
+            </div>
+
+            {/* Pending approval banner */}
+            {userData?.accountStatus === 'pending' && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-4 mb-6 flex items-start gap-3 animate-fade-in">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+                  <Clock className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">Pending Approval</p>
+                  <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+                    Your institutional account is under review. Complete your profile while you wait for admin approval.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              {/* Name field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+                  {isInstitutional
+                    ? <><Building2 className="w-3.5 h-3.5" /> Organisation Name</>
+                    : <><UserCircle className="w-3.5 h-3.5" /> Full Name</>
+                  }
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all shadow-sm"
+                  placeholder={isInstitutional ? 'e.g. Sri Ramakrishna College of Arts & Science' : 'e.g. Rahul Sharma'}
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  required
+                />
+              </div>
+
+              {/* Bio field */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                  {isInstitutional ? 'About your organisation' : 'Bio / About you'}
+                </label>
+                <textarea
+                  rows={4}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all shadow-sm resize-none"
+                  placeholder={
+                    isInstitutional
+                      ? 'Describe your institution, mission, and focus areas...'
+                      : 'Tell the community about yourself, your research interests, expertise...'
+                  }
+                  value={bio}
+                  onChange={e => setBio(e.target.value)}
+                />
+              </div>
+
+              {/* Submit button */}
+              <button
+                type="submit"
+                disabled={loading || !name.trim()}
+                className="w-full flex items-center justify-center gap-2 bg-primary-600 text-white py-3.5 rounded-xl font-bold text-base shadow-md shadow-primary-500/30 hover:bg-primary-700 hover:shadow-lg disabled:opacity-50 disabled:shadow-none transition-all group"
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Setting up your profile...
+                  </>
+                ) : (
+                  <>
+                    Complete Setup
+                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </button>
+            </form>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Welcome to Link & Learn</h2>
-          <p className="text-gray-500 text-sm mt-1">Let's complete your profile to get started</p>
         </div>
 
-        {userData?.accountStatus === 'pending' && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-700 rounded-lg p-4 mb-6 text-sm">
-            <strong>⏳ Pending Approval</strong>
-            <p className="mt-1">Your institutional account is under review. You can complete your profile while waiting for admin approval.</p>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {isInstitutional ? 'Organisation Name' : 'Full Name'}
-            </label>
-            <input
-              type="text"
-              className="w-full border border-gray-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              {isInstitutional ? 'About your organisation' : 'Bio / About you'}
-            </label>
-            <textarea
-              rows={3}
-              className="w-full border border-gray-300 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              placeholder={isInstitutional ? "Describe your institution, mission, and focus areas..." : "Tell the community about yourself, your research interests, expertise..."}
-              value={bio}
-              onChange={e => setBio(e.target.value)}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Saving...' : 'Complete Setup →'}
-          </button>
-        </form>
+        <p className="text-center text-xs text-slate-400 mt-5 font-medium">
+          Your profile information can be updated at any time.
+        </p>
       </div>
     </div>
   );
