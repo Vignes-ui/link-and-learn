@@ -33,10 +33,14 @@ export default function MessagingPage() {
     try {
       const user = await getUserById(otherUid);
       if (!user) return;
-      const { status } = await getConnectionStatus(otherUid);
+      
       setActiveUser(user);
-      setConnectionStatus(status);
+      // We don't strictly need status to open, fetch it separately to avoid blocking
+      getConnectionStatus(otherUid).then(({status}) => setConnectionStatus(status));
+      
+      // Use the participant pair as activeConv to identify the thread uniquely
       setActiveConv(getConversationId(currentUser.uid, otherUid));
+      
       setSearch('');
       setSearchResults([]);
     } catch (err) {
@@ -139,7 +143,7 @@ export default function MessagingPage() {
                   conv={conv}
                   otherUid={otherUid}
                   currentUid={currentUser.uid}
-                  isActive={activeConv === conv.id}
+                  isActive={activeConv === getConversationId(currentUser.uid, otherUid)}
                   onClick={() => openConversation(otherUid)}
                   onProfile={() => navigate(`/profile/${otherUid}`)}
                 />

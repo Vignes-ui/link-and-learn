@@ -90,7 +90,7 @@ if ($path === '/api/users/search' && $method === 'GET') {
 }
 
 if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
-  Auth::requireUser();
+  $me = Auth::requireUser();
   $uid = (int)$m[1];
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar, bio, skills_json AS skills, education_json AS education, experience_json AS experience, publications_json AS publications, certificates_json AS certificates FROM users WHERE id=?");
@@ -792,6 +792,7 @@ if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method =
   $body = Http::jsonBody();
   $text = trim((string)($body['text'] ?? ''));
   if ($text === '') Http::json(['error' => 'text required'], 400);
+
   $pdo = Db::pdo();
   
   // RESTRICTION: Only connected people can send messages
