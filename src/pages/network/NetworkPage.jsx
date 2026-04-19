@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { searchUsers } from '../../api/messaging';
 import { getConnections, requestConnection, respondConnection, getConnectionStatus } from '../../api/connections';
@@ -6,6 +7,7 @@ import { UserPlus, UserCheck, UserX, Search, Users, Clock, CheckCircle2 } from '
 
 export default function NetworkPage() {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -116,6 +118,7 @@ export default function NetworkPage() {
                   onConnect={() => handleConnect(user.id)} 
                   onAccept={() => handleResponse(user.id, 'accepted')}
                   onReject={() => handleResponse(user.id, 'rejected')}
+                  onProfile={() => navigate(`/profile/${user.id}`)}
                 />
               ))}
             </div>
@@ -131,14 +134,22 @@ export default function NetworkPage() {
                   <p className="text-slate-400 font-medium">You haven't connected with anyone yet.</p>
                 </div>
               )}
-              {acceptedConnections.map(user => (
-                <div key={user.id} className="bg-white/40 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 group">
-                  <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=3b82f6&color=fff`} className="w-12 h-12 rounded-full border border-slate-100 shadow-sm" alt="" />
+              {acceptedConnections.map(u => (
+                <div 
+                  key={u.id} 
+                  className="bg-white/40 border border-slate-100 rounded-2xl p-4 flex items-center gap-4 group cursor-pointer"
+                  onClick={() => navigate(`/profile/${u.id}`)}
+                >
+                  <img src={u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=3b82f6&color=fff`} className="w-12 h-12 rounded-full border border-slate-100 shadow-sm" alt="" />
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-slate-900 truncate">{user.name}</p>
-                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 truncate">{user.role?.replace('_',' ')}</p>
+                    <p className="font-bold text-slate-900 truncate group-hover:text-primary-600 transition-colors">{u.name}</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 truncate">{u.role?.replace('_',' ')}</p>
                   </div>
-                  <button className="text-slate-300 hover:text-red-500 p-2 transition-colors opacity-0 group-hover:opacity-100" title="Remove Connection">
+                  <button 
+                    className="text-slate-300 hover:text-red-500 p-2 transition-colors opacity-0 group-hover:opacity-100" 
+                    title="Remove Connection"
+                    onClick={(e) => { e.stopPropagation(); /* TODO: handle remove */ }}
+                  >
                     <UserX className="w-4 h-4" />
                   </button>
                 </div>
@@ -157,18 +168,24 @@ export default function NetworkPage() {
               {pendingReceived.length === 0 && (
                 <p className="text-sm font-medium text-slate-500 py-4 text-center">No pending invitations.</p>
               )}
-              {pendingReceived.map(user => (
-                <div key={user.id} className="bg-white/60 border border-slate-100 rounded-2xl p-4 space-y-3 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=3b82f6&color=fff`} className="w-10 h-10 rounded-full" alt="" />
+              {pendingReceived.map(u => (
+                <div 
+                  key={u.id} 
+                  className="bg-white/60 border border-slate-100 rounded-2xl p-4 space-y-3 shadow-sm"
+                >
+                  <div 
+                    className="flex items-center gap-3 cursor-pointer group"
+                    onClick={() => navigate(`/profile/${u.id}`)}
+                  >
+                    <img src={u.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&background=3b82f6&color=fff`} className="w-10 h-10 rounded-full" alt="" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-bold text-slate-900 truncate">{user.name}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">{user.role?.replace('_',' ')}</p>
+                      <p className="text-sm font-bold text-slate-900 truncate group-hover:text-primary-600 transition-colors">{u.name}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 truncate">{u.role?.replace('_',' ')}</p>
                     </div>
                   </div>
                   <div className="flex gap-2">
                     <button 
-                      onClick={() => handleResponse(user.id, 'accepted')}
+                      onClick={() => handleResponse(u.id, 'accepted')}
                       className="flex-1 bg-primary-600 text-white py-1.5 rounded-lg text-xs font-bold hover:bg-primary-700 transition-all"
                     >
                       Accept
@@ -190,14 +207,24 @@ export default function NetworkPage() {
   );
 }
 
-function UserCard({ user, onConnect, onAccept, onReject }) {
+function UserCard({ user, onConnect, onAccept, onReject, onProfile }) {
   const status = user.connectionStatus;
   
   return (
     <div className="bg-white/60 border border-slate-100 rounded-[1.5rem] p-5 flex items-center gap-5 hover:shadow-md transition-all group">
-      <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=3b82f6&color=fff&size=64`} className="w-16 h-16 rounded-full border-2 border-white shadow-sm" alt="" />
+      <img 
+        src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=3b82f6&color=fff&size=64`} 
+        className="w-16 h-16 rounded-full border-2 border-white shadow-sm cursor-pointer" 
+        alt="" 
+        onClick={onProfile}
+      />
       <div className="flex-1 min-w-0">
-        <h3 className="font-bold text-slate-900 text-lg group-hover:text-primary-600 transition-colors">{user.name}</h3>
+        <h3 
+          className="font-bold text-slate-900 text-lg group-hover:text-primary-600 transition-colors cursor-pointer"
+          onClick={onProfile}
+        >
+          {user.name}
+        </h3>
         <p className="text-sm font-bold uppercase tracking-wider text-slate-500 mb-1">{user.role?.replace('_',' ')}</p>
         <p className="text-sm text-slate-600 line-clamp-1">{user.bio || 'Professional academic member'}</p>
       </div>

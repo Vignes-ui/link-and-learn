@@ -143,7 +143,10 @@ export default function FeedPage() {
             <div key={post.id} className="glass-panel rounded-[2rem] shadow-sm p-6 sm:p-8 border border-white/60 hover:shadow-md transition-shadow animate-slide-up" style={{ animationDelay: `${idx * 100}ms` }}>
               {/* Post Header */}
               <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-4 group cursor-pointer">
+                <div 
+                  className="flex items-center gap-4 group cursor-pointer"
+                  onClick={() => navigate(`/profile/${post.user_id || post.uid}`)}
+                >
                   <img
                     src={`https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName || 'U')}&background=3b82f6&color=fff&size=56`}
                     className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex-shrink-0 shadow-sm border border-slate-100 group-hover:ring-2 ring-primary-500 transition-all"
@@ -183,6 +186,14 @@ export default function FeedPage() {
 
               {/* Post Content */}
               <div className="pl-0 sm:pl-[72px]">
+                  <div className="flex-1 min-w-0">
+                    <h3 
+                      onClick={() => navigate(`/profile/${post.user_id || post.uid}`)}
+                      className="text-base sm:text-lg font-bold text-slate-900 leading-tight hover:text-primary-600 cursor-pointer transition-colors"
+                    >
+                      {post.authorName}
+                    </h3>
+                  </div>
                 <p className="text-[15px] sm:text-base text-slate-700 whitespace-pre-wrap leading-relaxed mb-4">
                   {post.content}
                 </p>

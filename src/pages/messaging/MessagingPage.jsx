@@ -141,6 +141,7 @@ export default function MessagingPage() {
                   currentUid={currentUser.uid}
                   isActive={activeConv === conv.id}
                   onClick={() => openConversation(otherUid)}
+                  onProfile={() => navigate(`/profile/${otherUid}`)}
                 />
               );
             })}
@@ -162,13 +163,16 @@ export default function MessagingPage() {
           ) : (
             <>
               {/* Header */}
-              <div className="p-4 sm:p-5 border-b border-slate-200/60 flex items-center gap-4 bg-white/40 backdrop-blur-md">
+              <div 
+                className="p-4 sm:p-5 border-b border-slate-200/60 flex items-center gap-4 bg-white/40 backdrop-blur-md cursor-pointer group"
+                onClick={() => navigate(`/profile/${activeUser.id}`)}
+              >
                 <div className="relative">
-                  <img src={activeUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeUser.name||'U')}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full shadow-sm" alt="" />
+                  <img src={activeUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeUser.name||'U')}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full shadow-sm group-hover:ring-2 ring-primary-500 transition-all" alt="" />
                   <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 text-lg truncate">{activeUser.name}</p>
+                  <p className="font-bold text-slate-900 text-lg truncate group-hover:text-primary-600 transition-colors">{activeUser.name}</p>
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-500 truncate">{activeUser.role?.replace('_',' ')}</p>
                 </div>
                 {['vendor','institution'].includes(activeUser.role) && (
@@ -274,7 +278,7 @@ export default function MessagingPage() {
   );
 }
 
-function ConvItem({ conv, otherUid, isActive, onClick }) {
+function ConvItem({ conv, otherUid, isActive, onClick, onProfile }) {
   const [user, setUser] = useState(null);
   useEffect(() => {
     getUserById(otherUid).then(setUser);
@@ -283,14 +287,19 @@ function ConvItem({ conv, otherUid, isActive, onClick }) {
   if (!user) return null;
   return (
     <button onClick={onClick} className={`w-full flex items-center gap-4 p-4 text-left transition-colors border-b border-slate-100 last:border-0 ${isActive ? 'bg-primary-50/60' : 'hover:bg-white/60'}`}>
-      <div className="relative shrink-0">
-        <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name||'U')}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full border border-slate-200 shadow-sm" alt="" />
+      <div className="relative shrink-0" onClick={(e) => { e.stopPropagation(); onProfile(); }}>
+        <img src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name||'U')}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full border border-slate-200 shadow-sm hover:ring-2 ring-primary-500 transition-all" alt="" />
         {/* Mock online status indicator */}
         <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full"></div>
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex justify-between items-baseline mb-0.5">
-          <p className="font-bold text-sm text-slate-900 truncate pr-2">{user.name}</p>
+          <p 
+            className="font-bold text-sm text-slate-900 truncate pr-2 hover:text-primary-600 transition-colors"
+            onClick={(e) => { e.stopPropagation(); onProfile(); }}
+          >
+            {user.name}
+          </p>
           {/* Mock timestamp, we could parse conv.updatedAt if available */}
           <span className="text-[10px] font-bold text-slate-400 shrink-0 uppercase tracking-wide">12:30</span>
         </div>

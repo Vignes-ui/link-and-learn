@@ -105,6 +105,11 @@ if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
   $u['publications'] = json_decode($u['publications_json'] ?? '[]', true);
   $u['certificates'] = json_decode($u['certificates_json'] ?? '[]', true);
   
+  // NOTIFICATION: Profile View
+  if ($uid !== (int)$me['id']) {
+    LinkLearn\Notification::send($uid, (int)$me['id'], 'profile_view', "viewed your profile");
+  }
+
   Http::json(['user' => $u]);
 }
 
@@ -798,6 +803,10 @@ if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method =
   $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, text) VALUES (?,?,?)")
     ->execute([$convId, (int)$me['id'], $text]);
   $pdo->prepare("UPDATE conversations SET last_message=?, last_message_at=NOW() WHERE id=?")->execute([$text, $convId]);
+  
+  // NOTIFICATION: Message Received
+  LinkLearn\Notification::send($otherId, (int)$me['id'], 'message_received', "sent you a message");
+  
   Http::json(['ok' => true]);
 }
 

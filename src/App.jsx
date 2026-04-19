@@ -5,6 +5,7 @@ import AuthPage from './pages/auth/AuthPage';
 
 // Profile
 import Profile from './pages/profile/Profile';
+import UserProfile from './pages/profile/UserProfile';
 import ProfileSetup from './pages/profile/ProfileSetup';
 
 // Features
@@ -46,6 +47,14 @@ function App() {
           <ProtectedRoute>
             <ProfileGuard>
               <Layout><Profile /></Layout>
+            </ProfileGuard>
+          </ProtectedRoute>
+        } />
+
+        <Route path="/profile/:id" element={
+          <ProtectedRoute>
+            <ProfileGuard>
+              <Layout><UserProfile /></Layout>
             </ProfileGuard>
           </ProtectedRoute>
         } />
