@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { sendMessage, subscribeMessages, subscribeConversations, searchUsers, getConversationId } from '../../api/messaging';
+import { getConnectionStatus } from '../../api/connections';
 import { getUserById } from '../../api/profile';
 import { MessageSquare, Inbox, Hand } from 'lucide-react';
 
 export default function MessagingPage() {
   const { currentUser, userData } = useAuth();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
   const [activeUser, setActiveUser] = useState(null);
@@ -14,6 +17,7 @@ export default function MessagingPage() {
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState(null);
   const messagesEndRef = useRef();
 
   useEffect(() => {
@@ -26,11 +30,18 @@ export default function MessagingPage() {
   }, [messages]);
 
   const openConversation = async (otherUid) => {
-    const user = await getUserById(otherUid);
-    setActiveUser(user);
-    setActiveConv(getConversationId(currentUser.uid, otherUid));
-    setSearch('');
-    setSearchResults([]);
+    try {
+      const user = await getUserById(otherUid);
+      if (!user) return;
+      const { status } = await getConnectionStatus(otherUid);
+      setActiveUser(user);
+      setConnectionStatus(status);
+      setActiveConv(getConversationId(currentUser.uid, otherUid));
+      setSearch('');
+      setSearchResults([]);
+    } catch (err) {
+      console.error('Failed to open conversation', err);
+    }
   };
 
   useEffect(() => {
@@ -212,27 +223,48 @@ export default function MessagingPage() {
 
               {/* Input Area */}
               <div className="p-4 sm:p-5 bg-white/40 backdrop-blur-md border-t border-slate-200/60">
-                <form onSubmit={handleSend} className="flex gap-3 bg-white border border-slate-200 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
-                  <input
-                    className="flex-1 bg-transparent px-4 py-2 outline-none text-slate-700"
-                    placeholder={`Message ${activeUser.name.split(' ')[0]}...`}
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                  />
-                  <button 
-                    type="submit" 
-                    disabled={!input.trim()} 
-                    className="bg-primary-600 text-white w-10 h-10 flex items-center justify-center rounded-xl hover:bg-primary-700 disabled:opacity-40 disabled:hover:bg-primary-600 transition-all shadow-sm shrink-0 group"
-                  >
-                    <svg className="w-4 h-4 translate-x-px group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
-                  </button>
-                </form>
-                <div className="text-center mt-2">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                    End-to-end encrypted
-                  </span>
-                </div>
+                {connectionStatus === 'accepted' ? (
+                  <>
+                    <form onSubmit={handleSend} className="flex gap-3 bg-white border border-slate-200 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
+                      <input
+                        className="flex-1 bg-transparent px-4 py-2 outline-none text-slate-700"
+                        placeholder={`Message ${activeUser.name.split(' ')[0]}...`}
+                        value={input}
+                        onChange={e => setInput(e.target.value)}
+                      />
+                      <button 
+                        type="submit" 
+                        disabled={!input.trim()} 
+                        className="bg-primary-600 text-white w-10 h-10 flex items-center justify-center rounded-xl hover:bg-primary-700 disabled:opacity-40 disabled:hover:bg-primary-600 transition-all shadow-sm shrink-0 group"
+                      >
+                        <svg className="w-4 h-4 translate-x-px group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path></svg>
+                      </button>
+                    </form>
+                    <div className="text-center mt-2">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest flex items-center justify-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                        End-to-end encrypted
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-slate-100/50 border border-slate-200 rounded-2xl p-4 text-center">
+                    <p className="text-sm font-bold text-slate-500 mb-1">
+                      {connectionStatus === 'sent_pending' ? 'Connection Request Sent' : 
+                       connectionStatus === 'received_pending' ? 'Invitation Received' : 
+                       'Not Connected'}
+                    </p>
+                    <p className="text-xs font-medium text-slate-400">
+                      You can only message people you are connected with.
+                    </p>
+                    <button 
+                      onClick={() => navigate('/network')}
+                      className="mt-3 text-primary-600 text-xs font-bold hover:underline"
+                    >
+                      {connectionStatus === 'received_pending' ? 'View Invitation →' : 'Go to Network →'}
+                    </button>
+                  </div>
+                )}
               </div>
             </>
           )}

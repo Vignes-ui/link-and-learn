@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { createPost, subscribeFeed, toggleLike, addComment, deletePost } from '../../api/posts';
-import { Send, FileText } from 'lucide-react';
+import { getConnections, requestConnection } from '../../api/connections';
+import { Send, FileText, UserPlus, Clock as ClockIcon } from 'lucide-react';
 
 export default function FeedPage() {
   const { currentUser, userData } = useAuth();
@@ -11,11 +12,31 @@ export default function FeedPage() {
   const [posting, setPosting] = useState(false);
   const [commentText, setCommentText] = useState({});
   const [openComments, setOpenComments] = useState({});
+  const [myConnections, setMyConnections] = useState([]);
 
   useEffect(() => {
     const unsub = subscribeFeed(setPosts);
+    fetchConnections();
     return () => unsub();
   }, []);
+
+  const fetchConnections = async () => {
+    try {
+      const { connections } = await getConnections();
+      setMyConnections(connections);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleConnect = async (userId) => {
+    try {
+      await requestConnection(userId);
+      fetchConnections();
+    } catch (err) {
+      alert('Failed to connect');
+    }
+  };
 
   const handlePost = async (e) => {
     e.preventDefault();
@@ -27,6 +48,26 @@ export default function FeedPage() {
       setImageFile(null);
     } finally {
       setPosting(false);
+    }
+  };
+
+  const handleLike = async (postId) => {
+    // Optimistic update
+    setPosts(prev => prev.map(p => {
+      if (p.id === postId) {
+        const isLiked = p.likes?.includes(currentUser.uid);
+        const newLikes = isLiked 
+          ? p.likes.filter(id => id !== currentUser.uid)
+          : [...(p.likes || []), currentUser.uid];
+        return { ...p, likes: newLikes };
+      }
+      return p;
+    }));
+    
+    try {
+      await toggleLike(postId);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -115,11 +156,29 @@ export default function FeedPage() {
                     </p>
                   </div>
                 </div>
-                {post.user_id === currentUser.uid || post.uid === currentUser.uid ? (
-                  <button onClick={() => deletePost(post.id)} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete Post">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                  </button>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  {post.user_id !== currentUser.uid && post.uid !== currentUser.uid && (
+                    <div className="mr-2">
+                      {myConnections.find(c => c.id === String(post.user_id || post.uid))?.status === 'accepted' ? (
+                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">Connected</span>
+                      ) : myConnections.find(c => c.id === String(post.user_id || post.uid))?.status === 'sent_pending' ? (
+                        <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100 flex items-center gap-1"><ClockIcon className="w-3 h-3" /> Pending</span>
+                      ) : (
+                        <button 
+                          onClick={() => handleConnect(post.user_id || post.uid)}
+                          className="flex items-center gap-1.5 bg-primary-50 text-primary-600 hover:bg-primary-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-primary-100 shadow-sm"
+                        >
+                          <UserPlus className="w-3.5 h-3.5" /> Connect
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {(post.user_id === currentUser.uid || post.uid === currentUser.uid) ? (
+                    <button onClick={() => deletePost(post.id)} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete Post">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {/* Post Content */}
@@ -136,7 +195,7 @@ export default function FeedPage() {
                 {/* Interactions */}
                 <div className="flex gap-6 pt-4 border-t border-slate-100 mt-2">
                   <button
-                    onClick={() => toggleLike(post.id)}
+                    onClick={() => handleLike(post.id)}
                     className={`flex items-center gap-2 text-sm font-semibold transition-all hover:scale-105 ${liked ? 'text-primary-600' : 'text-slate-500 hover:text-primary-500'}`}
                   >
                     <svg className={`w-5 h-5 ${liked ? 'fill-current' : 'fill-none'}`} stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.514"></path></svg>

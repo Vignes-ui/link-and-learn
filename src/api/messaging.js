@@ -2,7 +2,7 @@ import { apiFetch, poll } from './http';
 
 export const getConversationId = (uid1, uid2) => {
   // Keep old helper for UI state keys; backend uses numeric conversation rows
-  return [uid1, uid2].sort().join('_');
+  return [String(uid1), String(uid2)].sort().join('_');
 };
 
 export const sendMessage = async (_senderIdIgnored, receiverId, text) => {

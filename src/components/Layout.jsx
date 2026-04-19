@@ -1,15 +1,18 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut } from 'lucide-react';
+import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut, Users, Bell } from 'lucide-react';
+import { subscribeNotifications } from '../api/notifications';
 
 const NAV_ITEMS = [
   { label: 'Feed', path: '/feed', icon: <FileText className="w-5 h-5" />, roles: '*' },
+  { label: 'Network', path: '/network', icon: <Users className="w-5 h-5" />, roles: '*' },
   { label: 'Articles', path: '/articles', icon: <BookOpen className="w-5 h-5" />, roles: '*' },
   { label: 'Recruitment', path: '/recruitment', icon: <Briefcase className="w-5 h-5" />, roles: '*' },
   { label: 'Events', path: '/events', icon: <CalendarDays className="w-5 h-5" />, roles: '*' },
   { label: 'Messages', path: '/messages', icon: <MessageSquare className="w-5 h-5" />, roles: '*' },
+  { label: 'Notifications', path: '/notifications', icon: <Bell className="w-5 h-5" />, roles: '*' },
   { label: 'Vendor', path: '/vendor', icon: <Building2 className="w-5 h-5" />, roles: ['institution','govt_body','ngo','vendor','admin'] },
   { label: 'Admin', path: '/admin', icon: <ShieldCheck className="w-5 h-5" />, roles: ['admin'] },
 ];
@@ -19,6 +22,15 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    if (!userData) return;
+    const unsub = subscribeNotifications((notifs) => {
+      setUnreadCount(notifs.filter(n => !n.isRead).length);
+    });
+    return () => unsub();
+  }, [userData]);
 
   const handleLogout = async () => {
     await logout();
@@ -57,7 +69,7 @@ export default function Layout({ children }) {
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${
+                className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-xl text-sm font-semibold transition-all duration-300 relative ${
                   active 
                   ? 'bg-primary-500 text-white shadow-md shadow-primary-500/20 translate-x-1' 
                   : 'text-slate-500 hover:bg-white/60 hover:text-slate-900 hover:shadow-sm'
@@ -65,6 +77,11 @@ export default function Layout({ children }) {
               >
                 <span className={`text-lg ${active ? 'opacity-100' : 'opacity-70 group-hover:opacity-100'} transition-opacity`}>{item.icon}</span>
                 {item.label}
+                {item.label === 'Notifications' && unreadCount > 0 && (
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 bg-red-500 text-white text-[10px] flex items-center justify-center rounded-full border-2 border-white shadow-sm font-bold">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </button>
             );
           })}

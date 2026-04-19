@@ -13,6 +13,8 @@ import ArticlesPage from './pages/articles/ArticlesPage';
 import RecruitmentPage from './pages/recruitment/RecruitmentPage';
 import EventsPage from './pages/events/EventsPage';
 import MessagingPage from './pages/messaging/MessagingPage';
+import NetworkPage from './pages/network/NetworkPage';
+import NotificationsPage from './pages/notifications/NotificationsPage';
 import VendorPage from './pages/vendor/VendorPage';
 import AdminPage from './pages/admin/AdminPage';
 
@@ -57,6 +59,15 @@ function App() {
           </ProtectedRoute>
         } />
 
+        {/* Network */}
+        <Route path="/network" element={
+          <ProtectedRoute>
+            <ProfileGuard>
+              <Layout><NetworkPage /></Layout>
+            </ProfileGuard>
+          </ProtectedRoute>
+        } />
+
         {/* Articles */}
         <Route path="/articles" element={
           <ProtectedRoute>
@@ -89,6 +100,15 @@ function App() {
           <ProtectedRoute>
             <ProfileGuard>
               <Layout><MessagingPage /></Layout>
+            </ProfileGuard>
+          </ProtectedRoute>
+        } />
+
+        {/* Notifications */}
+        <Route path="/notifications" element={
+          <ProtectedRoute>
+            <ProfileGuard>
+              <Layout><NotificationsPage /></Layout>
             </ProfileGuard>
           </ProtectedRoute>
         } />

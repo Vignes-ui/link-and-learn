@@ -187,6 +187,49 @@ final class Auth {
     return (int)$pdo->lastInsertId();
   }
 
+  public static function areConnected(int $u1, int $u2): bool {
+    $min = min($u1, $u2);
+    $max = max($u1, $u2);
+    $pdo = Db::pdo();
+    $stmt = $pdo->prepare("SELECT status FROM user_connections WHERE user_id_1=? AND user_id_2=?");
+    $stmt->execute([$min, $max]);
+    return $stmt->fetchColumn() === 'accepted';
+  }
+
+  public static function getConnectionStatus(int $me, int $other): ?string {
+    $u1 = min($me, $other);
+    $u2 = max($me, $other);
+    $pdo = Db::pdo();
+    $stmt = $pdo->prepare("SELECT status, user_id_1 FROM user_connections WHERE user_id_1=? AND user_id_2=?");
+    $stmt->execute([$u1, $u2]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    
+    // If it's pending, we need to know who sent it
+    if ($row['status'] === 'pending') {
+      return $row['user_id_1'] === $me ? 'sent_pending' : 'received_pending';
+    }
+    return $row['status'];
+  }
+
+  public static function requestConnection(int $me, int $other): void {
+    if ($me === $other) Http::json(['error' => 'Cannot connect to self'], 400);
+    $u1 = min($me, $other);
+    $u2 = max($me, $other);
+    $pdo = Db::pdo();
+    $pdo->prepare("INSERT INTO user_connections (user_id_1, user_id_2, status) VALUES (?,?, 'pending') ON DUPLICATE KEY UPDATE status='pending'")
+        ->execute([$u1, $u2]);
+  }
+
+  public static function respondConnection(int $me, int $other, string $status): void {
+    if (!in_array($status, ['accepted', 'rejected'], true)) Http::json(['error' => 'Invalid status'], 400);
+    $u1 = min($me, $other);
+    $u2 = max($me, $other);
+    $pdo = Db::pdo();
+    $pdo->prepare("UPDATE user_connections SET status=? WHERE user_id_1=? AND user_id_2=?")
+        ->execute([$status, $u1, $u2]);
+  }
+
   private static function publicUser(array $u): array {
     $json = function($v): array {
       if ($v === null) return [];

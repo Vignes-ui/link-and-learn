@@ -89,6 +89,25 @@ if ($path === '/api/users/search' && $method === 'GET') {
   Http::json(['users' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
 }
 
+if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
+  Auth::requireUser();
+  $uid = (int)$m[1];
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar, bio, skills_json AS skills, education_json AS education, experience_json AS experience, publications_json AS publications, certificates_json AS certificates FROM users WHERE id=?");
+  $stmt->execute([$uid]);
+  $u = $stmt->fetch(PDO::FETCH_ASSOC);
+  if (!$u) Http::json(['error' => 'User not found'], 404);
+  
+  // Transform JSON fields
+  $u['skills'] = json_decode($u['skills_json'] ?? '[]', true);
+  $u['education'] = json_decode($u['education_json'] ?? '[]', true);
+  $u['experience'] = json_decode($u['experience_json'] ?? '[]', true);
+  $u['publications'] = json_decode($u['publications_json'] ?? '[]', true);
+  $u['certificates'] = json_decode($u['certificates_json'] ?? '[]', true);
+  
+  Http::json(['user' => $u]);
+}
+
 // --- UPLOADS ---
 if ($path === '/api/uploads/avatar' && $method === 'POST') {
   $me = Auth::requireUser();
@@ -189,6 +208,13 @@ if (preg_match('#^/api/posts/(\\d+)/like$#', $path, $m) && $method === 'POST') {
     $pdo->prepare("DELETE FROM post_likes WHERE post_id=? AND user_id=?")->execute([$postId, (int)$me['id']]);
   } else {
     $pdo->prepare("INSERT IGNORE INTO post_likes (post_id, user_id) VALUES (?,?)")->execute([$postId, (int)$me['id']]);
+    // NOTIFICATION: Like
+    $post = $pdo->prepare("SELECT user_id FROM posts WHERE id=?");
+    $post->execute([$postId]);
+    $authorId = (int)$post->fetchColumn();
+    if ($authorId && $authorId !== (int)$me['id']) {
+      LinkLearn\Notification::send($authorId, (int)$me['id'], 'post_like', "liked your post", $postId);
+    }
   }
   Http::json(['ok' => true]);
 }
@@ -202,6 +228,15 @@ if (preg_match('#^/api/posts/(\\d+)/comments$#', $path, $m) && $method === 'POST
   $pdo = Db::pdo();
   $pdo->prepare("INSERT INTO post_comments (post_id, user_id, author_name, text) VALUES (?,?,?,?)")
     ->execute([$postId, (int)$me['id'], $me['name'], $text]);
+  
+  // NOTIFICATION: Comment
+  $post = $pdo->prepare("SELECT user_id FROM posts WHERE id=?");
+  $post->execute([$postId]);
+  $authorId = (int)$post->fetchColumn();
+  if ($authorId && $authorId !== (int)$me['id']) {
+    LinkLearn\Notification::send($authorId, (int)$me['id'], 'post_comment', "commented on your post", $postId);
+  }
+
   Http::json(['ok' => true]);
 }
 
@@ -609,6 +644,104 @@ if (preg_match('#^/api/requirements/(\\d+)/award$#', $path, $m) && $method === '
   Http::json(['ok' => true]);
 }
 
+// --- CONNECTIONS ---
+if ($path === '/api/connections' && $method === 'GET') {
+  $me = Auth::requireUser();
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("
+    SELECT u.id, u.name, u.email, u.role, u.avatar_url AS avatar, c.status, c.user_id_1
+    FROM user_connections c
+    JOIN users u ON (u.id = c.user_id_1 OR u.id = c.user_id_2)
+    WHERE (c.user_id_1 = ? OR c.user_id_2 = ?) AND u.id != ?
+  ");
+  $stmt->execute([(int)$me['id'], (int)$me['id'], (int)$me['id']]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $out = array_map(function($r) use ($me) {
+    $status = $r['status'];
+    if ($status === 'pending') {
+      $status = (int)$r['user_id_1'] === (int)$me['id'] ? 'sent_pending' : 'received_pending';
+    }
+    return [
+      'id' => (string)$r['id'],
+      'name' => $r['name'],
+      'role' => $r['role'],
+      'avatar' => $r['avatar'],
+      'status' => $status
+    ];
+  }, $rows);
+  Http::json(['connections' => $out]);
+}
+
+if ($path === '/api/connections/request' && $method === 'POST') {
+  $me = Auth::requireUser();
+  $body = Http::jsonBody();
+  $otherId = (int)($body['userId'] ?? 0);
+  if (!$otherId) Http::json(['error' => 'userId required'], 400);
+  Auth::requestConnection((int)$me['id'], $otherId);
+  
+  // NOTIFICATION: Connection Request
+  LinkLearn\Notification::send($otherId, (int)$me['id'], 'connection_request', "sent you a connection request");
+
+  Http::json(['ok' => true]);
+}
+
+if ($path === '/api/connections/respond' && $method === 'PATCH') {
+  $me = Auth::requireUser();
+  $body = Http::jsonBody();
+  $otherId = (int)($body['userId'] ?? 0);
+  $status = (string)($body['status'] ?? '');
+  if (!$otherId || !$status) Http::json(['error' => 'userId and status required'], 400);
+  Auth::respondConnection((int)$me['id'], $otherId, $status);
+  
+  // NOTIFICATION: Connection Accepted
+  if ($status === 'accepted') {
+    LinkLearn\Notification::send($otherId, (int)$me['id'], 'connection_accepted', "accepted your connection request");
+  }
+
+  Http::json(['ok' => true]);
+}
+
+if (preg_match('#^/api/connections/status/(\\d+)$#', $path, $m) && $method === 'GET') {
+  $me = Auth::requireUser();
+  $otherId = (int)$m[1];
+  $status = Auth::getConnectionStatus((int)$me['id'], $otherId);
+  Http::json(['status' => $status]);
+}
+
+// --- NOTIFICATIONS ---
+if ($path === '/api/notifications' && $method === 'GET') {
+  $me = Auth::requireUser();
+  $rows = LinkLearn\Notification::getForUser((int)$me['id']);
+  $out = array_map(function($n) {
+    return [
+      'id' => (string)$n['id'],
+      'type' => $n['type'],
+      'message' => $n['message'],
+      'fromUser' => $n['from_user_id'] ? [
+        'id' => (string)$n['from_user_id'],
+        'name' => $n['from_name'],
+        'avatar' => $n['from_avatar']
+      ] : null,
+      'relatedId' => $n['related_id'] ? (string)$n['related_id'] : null,
+      'isRead' => (bool)$n['is_read'],
+      'createdAt' => gmdate('c', strtotime($n['created_at']))
+    ];
+  }, $rows);
+  Http::json(['notifications' => $out]);
+}
+
+if ($path === '/api/notifications/read-all' && $method === 'POST') {
+  $me = Auth::requireUser();
+  LinkLearn\Notification::markAllAsRead((int)$me['id']);
+  Http::json(['ok' => true]);
+}
+
+if (preg_match('#^/api/notifications/(\\d+)/read$#', $path, $m) && $method === 'PATCH') {
+  $me = Auth::requireUser();
+  LinkLearn\Notification::markAsRead((int)$me['id'], (int)$m[1]);
+  Http::json(['ok' => true]);
+}
+
 // --- MESSAGING ---
 if ($path === '/api/conversations' && $method === 'GET') {
   $me = Auth::requireUser();
@@ -655,6 +788,12 @@ if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method =
   $text = trim((string)($body['text'] ?? ''));
   if ($text === '') Http::json(['error' => 'text required'], 400);
   $pdo = Db::pdo();
+  
+  // RESTRICTION: Only connected people can send messages
+  if (!Auth::areConnected((int)$me['id'], $otherId)) {
+    Http::json(['error' => 'You must be connected to send messages'], 403);
+  }
+
   $convId = Auth::ensureConversation((int)$me['id'], $otherId);
   $pdo->prepare("INSERT INTO messages (conversation_id, sender_id, text) VALUES (?,?,?)")
     ->execute([$convId, (int)$me['id'], $text]);

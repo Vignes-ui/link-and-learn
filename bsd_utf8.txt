@@ -1,0 +1,308 @@
+﻿
+Link & Learn
+Professional Networking Platform for Education, Research & Institutions
+
+
+
+Confidential â€” For Internal Use Only
+
+1.  Executive Summary
+
+
+Link and Learn is a purpose-built web-based professional networking platform for India's education, research, and institutional sector. Developed to bridge the significant gap left by general-purpose platforms such as LinkedIn and Facebook, the platform unifies students, faculty, researchers, institutions, government bodies, NGOs, funding agencies, and vendors within a single, governed ecosystem.
+
+This Business Solution Document (BSD) translates the requirements captured in the BRD v1.0 into a structured solution design â€” covering the system architecture, role-based access model, module specifications, data flows, and the deployment roadmap aligned to the three-phase delivery timeline.
+
+The solution is anchored on a ReactJS front end with a PHP + MySQL backend, ensuring rapid development velocity, full control over data, and minimal infrastructure overhead within the 12-week internship delivery window.
+
+2.  Problem & Solution Mapping
+
+
+The table below maps each identified business problem to the corresponding platform solution delivered by Link and Learn.
+
+
+3.  Solution Architecture Overview
+
+
+3.1  Architecture Summary
+The Link and Learn platform follows a Single Page Application (SPA) architecture with a PHP REST API backend and MySQL database. The layered architecture comprises:
+
+Presentation Layer: ReactJS + Vite SPA, styled with Tailwind CSS. Fully responsive across mobile, tablet, and desktop viewports.
+Business Logic Layer: React feature modules and PHP server-side scripts for server-side operations (AI detection, certificate validation triggers, recruitment matching).
+Data Layer: MySQL relational database for all platform data; server-side file storage for file assets (certificates, profile media, ad creatives).
+Authentication & Security Layer: PHP session-based and JWT authentication with role-based RBAC; TLS 1.2+ encryption for all data in transit; bcrypt for password hashing.
+Notification Layer: Third-party push notification service (e.g., OneSignal) for real-time push notifications across job alerts, event reminders, and recruitment matches.
+AI Integration Layer: Hugging Face API for AI-generated content detection and plagiarism analysis â€” invoked via PHP server-side scripts on article submission.
+
+3.2  Technology Stack
+
+4.  Module Solution Specifications
+
+
+This section provides the solution design for each functional module, aligned to the Functional Requirements (FR) defined in BRD v1.0.
+
+4.1  Authentication & User Management  |  FR-01
+The authentication solution provides two distinct registration and login pathways â€” Personal and Institutional â€” each with a unique profile schema, verification workflow, and access control scope.
+
+
+4.2  Profile Management & Resume Creator  |  FR-02
+Personal users receive a LinkedIn-style profile with real-time editing and an in-browser PDF resume generator.
+
+
+4.3  Degree Certificate Validation  |  FR-03
+A manual upload-and-review workflow provides credential verification in v1.0, with a verified badge displayed on approved profiles.
+
+
+4.4  Journals & Articles  |  FR-04
+A rich-text publishing system for research articles and institutional knowledge, discoverable via full-text search.
+
+
+4.5  AI Content Detection  |  FR-05
+An automated pipeline detects AI-generated content, plagiarism, and fake profile signals on article submission.
+
+
+4.6  Recruitment Module  |  FR-06
+Structured job and vacancy management for institutions, with automated candidate matching and push notifications.
+
+
+4.7  Events Management  |  FR-07
+A complete event lifecycle solution from creation through registration to QR-based attendance management.
+
+
+4.8  Messaging & Call Masking  |  FR-08
+Real-time in-app messaging with a call masking architecture that protects direct contact numbers of all parties.
+
+
+4.9  Vendor Connector & Facility Management  |  FR-09
+A structured marketplace connecting institutions' procurement needs with verified vendor suppliers.
+
+
+4.10  Advertisement Module  |  FR-10
+A targeted advertising system serving relevant ad content to matched user segments across the platform.
+
+
+5.  Role-Based Access Design
+
+
+Link and Learn operates on a strict Role-Based Access Control (RBAC) architecture. Eight distinct roles are defined across two login categories â€” Personal and Institutional â€” with a dedicated internal Platform Admin role. Every feature, data access point, and UI element is governed by the assigned role.
+
+5.1  Role Overview Matrix
+
+5.2  Feature Ã— Role Access Matrix
+The matrix below defines access levels for each functional module by role. Legend: POST = create/post, READ = read only, APPLY = apply/register, SUBMIT = submit for review, REVIEW = admin moderation, QUOTE = submit vendor quotes, APPROVE = admin approval, MASKED = masked/restricted access.
+
+
+6.  Detailed Role Specifications
+
+
+The following sections define the complete capabilities, restrictions, and user journey for each of the eight platform roles.
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Cannot post institutional job vacancies, PhD calls, or procurement requirements.
+Cannot approve or reject degree certificates â€” this is a Platform Admin action.
+Cannot access the Platform Admin panel or any content moderation tools.
+Cannot create vendor listings or submit procurement quotes.
+
+User Journey
+Register with email/password â†’ select Student personal account type.
+Complete profile: bio, education, skills, experience, and publications sections.
+Upload degree certificate â†’ status shows Pending; badge awarded within 48 hours of admin approval.
+Connect with peers and follow institutions â†’ professional feed populates.
+Receive push notifications for matching job/PhD listings based on profile criteria.
+Register for events â†’ receive QR ticket + automated reminder notifications.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-02  Â·  FR-03  Â·  FR-07
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Cannot post institutional job vacancies â€” institutional account required for posting.
+Cannot manage institutional procurement requirements or vendor interactions.
+Cannot access the Platform Admin moderation panel.
+
+User Journey
+Register â†’ select Researcher/Faculty personal account type.
+Build comprehensive academic profile including publications list and research interests.
+Publish journal or article â†’ AI detection pipeline runs automatically on submission.
+Engage with the research community via feed, comments, and direct messaging.
+Receive notifications for grant calls and PhD supervision opportunities matching research areas.
+Provide and receive reference endorsements through the connection network.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-02  Â·  FR-03  Â·  FR-04  Â·  FR-05  Â·  FR-07
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Institutional account requires Platform Admin approval before activation.
+Cannot approve or validate degree certificates â€” this is a Platform Admin action only.
+Direct staff contact numbers must not be exposed in the UI â€” all contact via platform masking.
+Payment for premium features is deferred to v2.0.
+
+User Journey
+Register institutional account â†’ submit for Platform Admin approval.
+Upon approval: complete institution profile, add departments, branding, and contact information.
+Post faculty or PhD vacancies â†’ system auto-notifies matching candidates within 1 hour.
+Create events â†’ manage registrations and QR ticket issuance from events dashboard.
+Post procurement requirements â†’ receive and compare vendor quotes via the Vendor Connector.
+Track all procurement and HR activities via the Facility Management dashboard.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-06  Â·  FR-07  Â·  FR-08  Â·  FR-09
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Account requires Platform Admin approval and manual verification of government affiliation before activation.
+Cannot process transactions or payments through the platform in v1.0.
+Live telephony call masking deferred to v2.0.
+
+User Journey
+Register â†’ select Government Research Body institutional type.
+Platform Admin manually verifies government affiliation before account activation.
+Publish grant announcements and collaboration calls â†’ matched users notified via push notifications.
+Post large-scale events; manage registrations and QR-based attendance verification.
+Engage with researchers through verified institutional messaging.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-04  Â·  FR-06  Â·  FR-07  Â·  FR-09
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Cannot post academic job vacancies or PhD programme openings.
+Payment integration for grant disbursements is deferred to v2.0.
+Account requires Platform Admin approval before activation.
+
+User Journey
+Register â†’ select NGO/Funding Agency institutional type.
+Platform Admin reviews and approves the account.
+Publish funding calls â†’ researchers and faculty receive targeted push notifications.
+Organise and manage events with online registration and QR ticket issuance.
+Post procurement requirements â†’ engage with verified vendor suppliers.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-06  Â·  FR-07  Â·  FR-09
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Cannot access personal user profiles, connections, or social feed content.
+Cannot post academic job vacancies, PhD calls, or research funding announcements.
+Direct phone numbers are never shown to institutions â€” all contact via platform masking (enforced by PHP server-side access controls).
+Cannot approve, reject, or modify institution procurement postings.
+
+User Journey
+Register â†’ select Vendor institutional type.
+Platform Admin reviews and approves vendor account and catalogue.
+Build product/service catalogue with descriptions, categories, and pricing ranges.
+Browse open procurement requirements â†’ filter by category, location, and budget.
+Submit competitive quotes â†’ communicate with institutions via masked messaging.
+Track quote outcomes and active order status from the vendor dashboard.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-08  Â·  FR-09  Â·  FR-10
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+Admin panel is accessible exclusively to Platform Admin accounts â€” separate route, elevated JWT role claim.
+Admin accounts cannot be self-registered â€” provisioned internally by the platform operations team only.
+
+User Journey
+Provisioned internally by the operations team â€” no self-registration.
+Log in to the dedicated Admin Panel (separate route, elevated JWT role claim).
+Process institution approval queue â€” review and action submissions daily.
+Process certificate validation queue â€” approve or reject within the 48-hour SLA.
+Review AI-flagged content queue â€” approve or remove within the defined moderation SLA.
+Review and approve pending ad campaigns before they go live.
+Monitor the analytics dashboard for platform health and engagement metrics.
+
+Applicable Functional Requirements:  FR-01  Â·  FR-03  Â·  FR-05  Â·  FR-10
+
+
+Capabilities & Access Rights
+
+
+Restrictions & Exclusions
+All ad submissions require Platform Admin review and approval before going live.
+Targeting parameters cannot include personally identifiable information â€” segment-level only.
+Payment for ad campaigns is deferred to v2.0.
+
+User Journey
+Submit ad creative and audience targeting parameters via the advertiser portal.
+Ad placed in Platform Admin review queue.
+Platform Admin reviews and approves the ad.
+Ad goes live and is served to matching user segments across the platform.
+Advertiser monitors impressions and CTR via the analytics dashboard.
+
+Applicable Functional Requirements:  FR-10
+
+7.  Non-Functional Solution Design
+
+
+
+8.  Delivery Roadmap
+
+
+The platform is delivered across three phases over a 12-week internship timeline. Each phase produces a testable increment that is demonstrated to the project supervisor at the phase close.
+
+
+9.  Success Criteria & Acceptance Checklist
+
+
+The Link and Learn v1.0 platform will be considered successfully delivered when all of the following criteria are verified by the project supervisor.
+
+
+10.  Revenue Model
+
+
+Link and Learn is designed for sustainable revenue generation from platform launch through four primary streams. Payment gateway integration is a v2.0 feature; the pricing and commercial architecture below is designed and ready for activation.
+
+
+11.  Risks & Mitigations
+
+
+
+12.  Constraints & Assumptions
+
+
+12.1  Constraints
+Frontend must be built exclusively with ReactJS as mandated by the project brief. No alternative JavaScript frameworks permitted.
+Platform must be delivered within the 12-week internship timeline across three defined phases.
+Initial release is a responsive web application only. Native Android/iOS apps are deferred to a subsequent phase.
+Live telephony integration for call masking (Exotel/Twilio) is deferred to v2.0 due to cost and third-party complexity.
+Payment processing is out of scope for v1.0. All premium and transaction features activate in v2.0.
+Platform launches in English only. Multi-language support is a future phase requirement.
+AI detection features are dependent on Hugging Face API availability, rate limits, and response latency.
+
+12.2  Assumptions
+A PHP + MySQL stack serves as the primary backend, hosted on a web server for v1.0.
+Project supervisor is available for weekly milestone reviews and provides sign-off within 3 business days of each deliverable.
+Degree certificate validation in v1.0 is a manual admin review process. No DigiLocker or NAD government API integration is assumed.
+Institutional accounts requiring verification will be manually approved by the Platform Admin during the early launch period.
+Users are assumed to have a modern web browser (Chrome, Firefox, Safari â€” latest two versions) and a stable internet connection.
+Reference checking in v1.0 operates on connection-based endorsements. AI-powered credibility scoring is a Phase 3 enhancement.
+
+13.  Glossary & Acronyms
+
+
+
+14.  Document Sign-Off & Version Control
+
+
+
+Sign-Off Authority
+
+Link & Learn  |  Business Solution Document  |  v1.0  |  April 2026  |  Confidential

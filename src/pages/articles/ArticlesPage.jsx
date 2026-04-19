@@ -142,12 +142,14 @@ export default function ArticlesPage() {
               Write Article
             </button>
           )}
-          <button 
-            onClick={() => setView('mine')} 
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${view === 'mine' ? 'bg-white text-slate-900 shadow-md' : 'text-white hover:bg-white/20'}`}
-          >
-            My Articles
-          </button>
+          {userData?.role !== 'student' && (
+            <button 
+              onClick={() => setView('mine')} 
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${view === 'mine' ? 'bg-white text-slate-900 shadow-md' : 'text-white hover:bg-white/20'}`}
+            >
+              My Articles
+            </button>
+          )}
         </div>
       </div>
 

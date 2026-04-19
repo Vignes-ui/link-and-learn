@@ -22,10 +22,8 @@ export const uploadCertificate = async (_uidIgnored, file, degree) => {
 };
 
 export const getUserById = async (id) => {
-  // Minimal need for messaging UI; use search endpoint fallback by exact match
-  const { users } = await apiFetch(`/api/users/search?q=${encodeURIComponent(String(id))}`);
-  const found = (users || []).find(u => String(u.id) === String(id));
-  return found ? { id: String(found.id), ...found } : null;
+  const { user } = await apiFetch(`/api/users/${id}`);
+  return user ? { id: String(user.id), ...user } : null;
 };
 
 export const getAllUsers = async () => {

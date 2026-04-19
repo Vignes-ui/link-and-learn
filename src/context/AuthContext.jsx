@@ -13,7 +13,7 @@ export const AuthProvider = ({ children }) => {
 
   const applyUser = (u) => {
     if (u) {
-      setCurrentUser({ uid: u.id });
+      setCurrentUser({ uid: String(u.id) });
       setUserData(u);
       setUserRole(u.role || 'student');
     } else {
