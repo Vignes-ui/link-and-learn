@@ -7,6 +7,7 @@
     "dev": "vite",
     "backend": "C:\\xampp\\php\\php.exe -S localhost:8080 -t backend/public",
     "build": "vite build",
+    "package:free-hosting": "powershell -ExecutionPolicy Bypass -File scripts/package-free-hosting.ps1",
     "lint": "eslint .",
     "preview": "vite preview"
   },

@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+free-hosting-package
 *.local
 
 # Editor directories and files
