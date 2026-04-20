@@ -62,6 +62,14 @@ if ($path === '/api/users/me' && $method === 'GET') {
   Http::json(['user' => $me]);
 }
 
+if ($path === '/api/users/me' && $method === 'DELETE') {
+  $me = Auth::requireUser();
+  $pdo = LinkLearn\Db::pdo();
+  $pdo->prepare("DELETE FROM users WHERE id=?")->execute([(int)$me['id']]);
+  Auth::logout();
+  Http::json(['ok' => true]);
+}
+
 if ($path === '/api/users/me' && $method === 'PATCH') {
   $me = Auth::requireUser();
   $body = Http::jsonBody();

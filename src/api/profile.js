@@ -39,3 +39,7 @@ export const updateCertificateStatus = async (uid, certIndex, status) => {
   await apiFetch(`/api/admin/users/${uid}/certificates/${certIndex}`, { method: 'PATCH', body: { status } });
 };
 
+export const deleteAccount = async () => {
+  await apiFetch('/api/users/me', { method: 'DELETE' });
+};
+

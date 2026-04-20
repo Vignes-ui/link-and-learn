@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { updateProfile, uploadAvatar, uploadCertificate } from '../../api/profile';
-import { Camera, CheckCircle2, Clock, XCircle, Info, GraduationCap, Paperclip, FileText, Image as ImageIcon } from 'lucide-react';
+import { updateProfile, uploadAvatar, uploadCertificate, deleteAccount } from '../../api/profile';
+import { Camera, CheckCircle2, Clock, XCircle, Info, GraduationCap, Paperclip, FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 const SKILL_SUGGESTIONS = ['React','Python','Machine Learning','Data Science','Research','Teaching','JavaScript','Firebase','Java','C++','Deep Learning','NLP'];
 
 export default function Profile() {
-  const { currentUser, userData, setUserData } = useAuth();
+  const { currentUser, userData, setUserData, logout } = useAuth();
   const [tab, setTab] = useState('overview');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -43,6 +43,16 @@ export default function Profile() {
       setTimeout(() => setMsg(''), 3000);
     } catch { setMsg('Save failed'); }
     finally { setSaving(false); }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('WARNING: Are you absolutely sure you want to delete your account? This action is permanent and cannot be undone.')) return;
+    try {
+      await deleteAccount();
+      await logout();
+    } catch (err) {
+      alert('Failed to delete account. Please try again.');
+    }
   };
 
   const handleAvatarChange = async (e) => {
@@ -177,14 +187,22 @@ export default function Profile() {
                   placeholder="Tell the community about yourself..." 
                 />
               </div>
-              <div className="pt-2">
+              <div className="pt-2 flex flex-col sm:flex-row gap-4 justify-between items-center">
                 <button 
                   onClick={() => save({ name, bio })} 
                   disabled={saving} 
-                  className="bg-primary-600 text-white px-8 py-3 rounded-xl font-semibold shadow-md hover:bg-primary-700 disabled:opacity-50 hover:shadow-lg transition-all"
+                  className="w-full sm:w-auto bg-primary-600 text-white px-8 py-3 rounded-xl font-semibold shadow-md hover:bg-primary-700 disabled:opacity-50 hover:shadow-lg transition-all"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
+                <div className="w-full sm:w-auto mt-6 sm:mt-0 pt-6 sm:pt-0 border-t border-slate-200 sm:border-t-0 flex justify-end">
+                  <button 
+                    onClick={handleDeleteAccount}
+                    className="w-full sm:w-auto bg-red-50 text-red-600 px-6 py-3 rounded-xl font-bold border border-red-200 hover:bg-red-100 transition-all flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <Trash2 className="w-5 h-5" /> Delete Account
+                  </button>
+                </div>
               </div>
             </div>
           )}
