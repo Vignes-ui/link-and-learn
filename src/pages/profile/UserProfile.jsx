@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getUserById } from '../../api/profile';
-import { getConnections, requestConnection } from '../../api/connections';
-import { MessageSquare, UserPlus, CheckCircle2, Clock, GraduationCap, Briefcase, FileText, ChevronRight, Mail, Calendar } from 'lucide-react';
+import { getConnections, requestConnection, removeConnection } from '../../api/connections';
+import { MessageSquare, UserPlus, CheckCircle2, Clock, GraduationCap, Briefcase, FileText, ChevronRight, Mail, Calendar, UserX } from 'lucide-react';
 
 export default function UserProfile() {
   const { id } = useParams();
@@ -46,6 +46,16 @@ export default function UserProfile() {
     }
   };
 
+  const handleRemove = async () => {
+    try {
+      if (!window.confirm('Are you sure you want to remove this connection?')) return;
+      await removeConnection(id);
+      setConnectionStatus(null);
+    } catch (err) {
+      alert('Failed to remove connection');
+    }
+  };
+
   if (loading) return <div className="p-20 text-center font-medium text-slate-500">Loading profile...</div>;
   if (!user) return <div className="p-20 text-center font-medium text-slate-500">User not found</div>;
 
@@ -85,12 +95,20 @@ export default function UserProfile() {
 
             <div className="flex flex-wrap justify-center md:justify-start gap-3">
               {connectionStatus === 'accepted' ? (
-                <button 
-                  onClick={() => navigate('/messages')}
-                  className="bg-primary-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 hover:-translate-y-0.5 transition-all flex items-center gap-2"
-                >
-                  <MessageSquare className="w-5 h-5" /> Send Message
-                </button>
+                <>
+                  <button 
+                    onClick={() => navigate('/messages')}
+                    className="bg-primary-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary-500/30 hover:bg-primary-700 hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                  >
+                    <MessageSquare className="w-5 h-5" /> Send Message
+                  </button>
+                  <button 
+                    onClick={handleRemove}
+                    className="bg-red-50 text-red-600 px-6 py-3 rounded-xl font-bold border border-red-200 hover:bg-red-100 hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                  >
+                    <UserX className="w-5 h-5" /> Unfriend
+                  </button>
+                </>
               ) : connectionStatus === 'sent_pending' ? (
                 <button disabled className="bg-slate-100 text-slate-500 px-6 py-3 rounded-xl font-bold border border-slate-200 flex items-center gap-2 cursor-default">
                   <Clock className="w-5 h-5" /> Request Pending

@@ -713,6 +713,13 @@ if (preg_match('#^/api/connections/status/(\\d+)$#', $path, $m) && $method === '
   Http::json(['status' => $status]);
 }
 
+if (preg_match('#^/api/connections/(\\d+)$#', $path, $m) && $method === 'DELETE') {
+  $me = Auth::requireUser();
+  $otherId = (int)$m[1];
+  Auth::removeConnection((int)$me['id'], $otherId);
+  Http::json(['ok' => true]);
+}
+
 // --- NOTIFICATIONS ---
 if ($path === '/api/notifications' && $method === 'GET') {
   $me = Auth::requireUser();

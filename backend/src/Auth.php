@@ -230,6 +230,15 @@ final class Auth {
         ->execute([$status, $u1, $u2]);
   }
 
+  public static function removeConnection(int $me, int $other): void {
+    $u1 = min($me, $other);
+    $u2 = max($me, $other);
+    $pdo = Db::pdo();
+    $pdo->prepare("DELETE FROM user_connections WHERE user_id_1=? AND user_id_2=?")
+        ->execute([$u1, $u2]);
+  }
+
+
   private static function publicUser(array $u): array {
     $json = function($v): array {
       if ($v === null) return [];

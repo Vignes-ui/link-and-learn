@@ -15,3 +15,7 @@ export const respondConnection = async (userId, status) => {
 export const getConnectionStatus = async (userId) => {
   return apiFetch(`/api/connections/status/${userId}`);
 };
+
+export const removeConnection = async (userId) => {
+  return apiFetch(`/api/connections/${userId}`, { method: 'DELETE' });
+};

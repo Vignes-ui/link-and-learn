@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { searchUsers } from '../../api/messaging';
-import { getConnections, requestConnection, respondConnection, getConnectionStatus } from '../../api/connections';
+import { getConnections, requestConnection, respondConnection, getConnectionStatus, removeConnection } from '../../api/connections';
 import { UserPlus, UserCheck, UserX, Search, Users, Clock, CheckCircle2 } from 'lucide-react';
 
 export default function NetworkPage() {
@@ -65,6 +65,17 @@ export default function NetworkPage() {
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: status } : u));
     } catch (err) {
       alert('Failed to respond to request');
+    }
+  };
+
+  const handleRemove = async (userId) => {
+    try {
+      if (!window.confirm('Are you sure you want to remove this connection?')) return;
+      await removeConnection(userId);
+      fetchConnections();
+      setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: null } : u));
+    } catch (err) {
+      alert('Failed to remove connection');
     }
   };
 
@@ -148,7 +159,7 @@ export default function NetworkPage() {
                   <button 
                     className="text-slate-300 hover:text-red-500 p-2 transition-colors opacity-0 group-hover:opacity-100" 
                     title="Remove Connection"
-                    onClick={(e) => { e.stopPropagation(); /* TODO: handle remove */ }}
+                    onClick={(e) => { e.stopPropagation(); handleRemove(u.id); }}
                   >
                     <UserX className="w-4 h-4" />
                   </button>
