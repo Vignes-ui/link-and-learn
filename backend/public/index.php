@@ -172,17 +172,82 @@ if ($path === '/api/users/search' && $method === 'GET') {
   $q = trim((string)($_GET['q'] ?? ''));
   if (strlen($q) < 2) Http::json(['users' => []]);
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar FROM users WHERE name LIKE ? OR email LIKE ? ORDER BY name ASC LIMIT 50");
+  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar FROM users WHERE (name LIKE ? OR email LIKE ?) AND account_status='active' ORDER BY name ASC LIMIT 50");
   $like = '%' . $q . '%';
   $stmt->execute([$like, $like]);
   Http::json(['users' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
+}
+
+if ($path === '/api/institutions' && $method === 'GET') {
+  Auth::requireUser();
+  $pdo = Db::pdo();
+  $stmt = $pdo->query("SELECT id, name, email, role, avatar_url AS avatar, bio, departments_json, catalogue_json, org_type FROM users WHERE login_type='institutional' AND role<>'admin' AND account_status='active' ORDER BY name ASC LIMIT 200");
+  $institutions = array_map(static function($row) {
+    return [
+      'id' => (string)$row['id'],
+      'name' => $row['name'],
+      'email' => $row['email'],
+      'role' => $row['role'],
+      'avatar' => $row['avatar'] ?? '',
+      'bio' => $row['bio'] ?? '',
+      'departments' => ll_json_decode_array($row['departments_json'] ?? '[]'),
+      'catalogue' => ll_json_decode_array($row['catalogue_json'] ?? '[]'),
+      'orgType' => $row['org_type'] ?? '',
+    ];
+  }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+  Http::json(['institutions' => $institutions]);
+}
+
+if ($path === '/api/institution-links' && $method === 'GET') {
+  $me = Auth::requireUser();
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("
+    SELECT l.*, u.name, u.email, u.role, u.avatar_url AS avatar
+    FROM institution_links l
+    JOIN users u ON u.id = l.institution_id
+    WHERE l.user_id=?
+    ORDER BY l.created_at DESC
+  ");
+  $stmt->execute([(int)$me['id']]);
+  $links = array_map(static fn($row) => [
+    'id' => (string)$row['institution_id'],
+    'name' => $row['name'],
+    'email' => $row['email'],
+    'role' => $row['role'],
+    'avatar' => $row['avatar'] ?? '',
+    'status' => $row['status'],
+    'createdAt' => gmdate('c', strtotime($row['created_at'])),
+  ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+  Http::json(['links' => $links]);
+}
+
+if ($path === '/api/institution-links' && $method === 'POST') {
+  $me = Auth::requireUser();
+  $body = Http::jsonBody();
+  $institutionId = (int)($body['institutionId'] ?? 0);
+  if ($institutionId <= 0) Http::json(['error' => 'institutionId required'], 400);
+  $pdo = Db::pdo();
+  $check = $pdo->prepare("SELECT 1 FROM users WHERE id=? AND login_type='institutional' AND account_status='active'");
+  $check->execute([$institutionId]);
+  if (!$check->fetchColumn()) Http::json(['error' => 'Institution not found or not active'], 404);
+  $pdo->prepare("INSERT INTO institution_links (user_id, institution_id, status) VALUES (?, ?, 'linked') ON DUPLICATE KEY UPDATE status='linked'")
+    ->execute([(int)$me['id'], $institutionId]);
+  LinkLearn\Notification::send($institutionId, (int)$me['id'], 'institution_link', 'linked with your institution profile');
+  Http::json(['ok' => true]);
+}
+
+if (preg_match('#^/api/institution-links/(\\d+)$#', $path, $m) && $method === 'DELETE') {
+  $me = Auth::requireUser();
+  $pdo = Db::pdo();
+  $pdo->prepare("DELETE FROM institution_links WHERE user_id=? AND institution_id=?")->execute([(int)$me['id'], (int)$m[1]]);
+  Http::json(['ok' => true]);
 }
 
 if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
   $me = Auth::requireUser();
   $uid = (int)$m[1];
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar, bio, skills_json AS skills, education_json AS education, experience_json AS experience, publications_json AS publications, certificates_json AS certificates FROM users WHERE id=?");
+  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar, bio, skills_json, education_json, experience_json, publications_json, certificates_json, departments_json, catalogue_json, org_type, verified_badge FROM users WHERE id=?");
   $stmt->execute([$uid]);
   $u = $stmt->fetch(PDO::FETCH_ASSOC);
   if (!$u) Http::json(['error' => 'User not found'], 404);
@@ -193,6 +258,25 @@ if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
   $u['experience'] = json_decode($u['experience_json'] ?? '[]', true);
   $u['publications'] = json_decode($u['publications_json'] ?? '[]', true);
   $u['certificates'] = json_decode($u['certificates_json'] ?? '[]', true);
+  $u['departments'] = json_decode($u['departments_json'] ?? '[]', true);
+  $u['catalogue'] = json_decode($u['catalogue_json'] ?? '[]', true);
+  $u['orgType'] = $u['org_type'] ?? '';
+  $u['verifiedBadge'] = (bool)($u['verified_badge'] ?? false);
+
+  $links = $pdo->prepare("
+    SELECT i.id, i.name, i.role, i.avatar_url AS avatar
+    FROM institution_links l
+    JOIN users i ON i.id = l.institution_id
+    WHERE l.user_id=?
+    ORDER BY i.name ASC
+  ");
+  $links->execute([$uid]);
+  $u['institutions'] = array_map(static fn($row) => [
+    'id' => (string)$row['id'],
+    'name' => $row['name'],
+    'role' => $row['role'],
+    'avatar' => $row['avatar'] ?? '',
+  ], $links->fetchAll(PDO::FETCH_ASSOC));
   
   // NOTIFICATION: Profile View
   if ($uid !== (int)$me['id']) {
@@ -200,6 +284,52 @@ if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
   }
 
   Http::json(['user' => $u]);
+}
+
+if (preg_match('#^/api/users/(\\d+)/endorsements$#', $path, $m) && $method === 'GET') {
+  Auth::requireUser();
+  $uid = (int)$m[1];
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("
+    SELECT e.*, u.name AS endorser_name, u.avatar_url AS endorser_avatar, u.role AS endorser_role
+    FROM user_endorsements e
+    JOIN users u ON u.id = e.endorser_user_id
+    WHERE e.target_user_id=?
+    ORDER BY e.created_at DESC
+    LIMIT 100
+  ");
+  $stmt->execute([$uid]);
+  $out = array_map(static fn($row) => [
+    'id' => (string)$row['id'],
+    'skill' => $row['skill'],
+    'comment' => $row['comment'] ?? '',
+    'endorser' => [
+      'id' => (string)$row['endorser_user_id'],
+      'name' => $row['endorser_name'],
+      'avatar' => $row['endorser_avatar'] ?? '',
+      'role' => $row['endorser_role'],
+    ],
+    'createdAt' => gmdate('c', strtotime($row['created_at'])),
+  ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+  Http::json(['endorsements' => $out]);
+}
+
+if (preg_match('#^/api/users/(\\d+)/endorsements$#', $path, $m) && $method === 'POST') {
+  $me = Auth::requireUser();
+  $targetId = (int)$m[1];
+  if ($targetId === (int)$me['id']) Http::json(['error' => 'Cannot endorse yourself'], 400);
+  if (!Auth::areConnected((int)$me['id'], $targetId) && ($me['role'] ?? '') !== 'admin') {
+    Http::json(['error' => 'Only accepted connections can endorse this profile'], 403);
+  }
+  $body = Http::jsonBody();
+  $skill = trim((string)($body['skill'] ?? ''));
+  $comment = trim((string)($body['comment'] ?? ''));
+  if ($skill === '') Http::json(['error' => 'skill required'], 400);
+  $pdo = Db::pdo();
+  $pdo->prepare("INSERT INTO user_endorsements (target_user_id, endorser_user_id, skill, comment) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE comment=VALUES(comment), created_at=NOW()")
+    ->execute([$targetId, (int)$me['id'], $skill, $comment]);
+  LinkLearn\Notification::send($targetId, (int)$me['id'], 'endorsement', "endorsed you for {$skill}");
+  Http::json(['ok' => true]);
 }
 
 // --- UPLOADS ---
@@ -478,25 +608,29 @@ if (preg_match('#^/api/admin/articles/(\\d+)/status$#', $path, $m) && $method ==
 if ($path === '/api/events' && $method === 'GET') {
   Auth::requireUser();
   $pdo = Db::pdo();
-  $stmt = $pdo->query("
-    SELECT e.*,
-      COALESCE((
-        SELECT JSON_ARRAYAGG(JSON_OBJECT(
-          'uid', CAST(a.user_id AS CHAR),
-          'name', a.name,
-          'email', a.email,
-          'ticketId', a.ticket_id,
-          'attended', a.attended,
-          'registeredAt', DATE_FORMAT(a.registered_at, '%Y-%m-%dT%H:%i:%sZ')
-        ))
-        FROM event_attendees a
-        WHERE a.event_id = e.id
-      ), JSON_ARRAY()) AS attendees_json
-    FROM events e
-    ORDER BY e.created_at DESC
-    LIMIT 200
-  ");
+  $stmt = $pdo->query("SELECT e.* FROM events e ORDER BY e.created_at DESC LIMIT 200");
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $eventIds = array_map(static fn($event) => (int)$event['id'], $rows);
+  $attendeesByEvent = [];
+  if (count($eventIds) > 0) {
+    $in = implode(',', array_fill(0, count($eventIds), '?'));
+    $attendeeStmt = $pdo->prepare("SELECT event_id, user_id, name, email, ticket_id, attended, registered_at FROM event_attendees WHERE event_id IN ($in) ORDER BY registered_at ASC");
+    $attendeeStmt->execute($eventIds);
+    foreach ($attendeeStmt->fetchAll(PDO::FETCH_ASSOC) as $attendee) {
+      $attendeesByEvent[(int)$attendee['event_id']][] = [
+        'uid' => (string)$attendee['user_id'],
+        'name' => $attendee['name'],
+        'email' => $attendee['email'],
+        'ticketId' => $attendee['ticket_id'],
+        'attended' => (bool)$attendee['attended'],
+        'registeredAt' => gmdate('c', strtotime($attendee['registered_at'])),
+      ];
+    }
+  }
+  foreach ($rows as &$row) {
+    $row['attendees_json'] = json_encode($attendeesByEvent[(int)$row['id']] ?? []);
+  }
+  unset($row);
   Http::json(['events' => array_map('LinkLearn\\Transform::event', $rows)]);
 }
 
@@ -551,27 +685,30 @@ if (preg_match('#^/api/events/(\\d+)/register$#', $path, $m) && $method === 'POS
 if ($path === '/api/events/mine' && $method === 'GET') {
   $me = Auth::requireUser();
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("
-    SELECT e.*,
-      COALESCE((
-        SELECT JSON_ARRAYAGG(JSON_OBJECT(
-          'uid', CAST(a.user_id AS CHAR),
-          'name', a.name,
-          'email', a.email,
-          'ticketId', a.ticket_id,
-          'attended', a.attended,
-          'registeredAt', DATE_FORMAT(a.registered_at, '%Y-%m-%dT%H:%i:%sZ')
-        ))
-        FROM event_attendees a
-        WHERE a.event_id = e.id
-      ), JSON_ARRAY()) AS attendees_json
-    FROM events e
-    WHERE e.user_id=?
-    ORDER BY e.created_at DESC
-    LIMIT 200
-  ");
+  $stmt = $pdo->prepare("SELECT e.* FROM events e WHERE e.user_id=? ORDER BY e.created_at DESC LIMIT 200");
   $stmt->execute([(int)$me['id']]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $eventIds = array_map(static fn($event) => (int)$event['id'], $rows);
+  $attendeesByEvent = [];
+  if (count($eventIds) > 0) {
+    $in = implode(',', array_fill(0, count($eventIds), '?'));
+    $attendeeStmt = $pdo->prepare("SELECT event_id, user_id, name, email, ticket_id, attended, registered_at FROM event_attendees WHERE event_id IN ($in) ORDER BY registered_at ASC");
+    $attendeeStmt->execute($eventIds);
+    foreach ($attendeeStmt->fetchAll(PDO::FETCH_ASSOC) as $attendee) {
+      $attendeesByEvent[(int)$attendee['event_id']][] = [
+        'uid' => (string)$attendee['user_id'],
+        'name' => $attendee['name'],
+        'email' => $attendee['email'],
+        'ticketId' => $attendee['ticket_id'],
+        'attended' => (bool)$attendee['attended'],
+        'registeredAt' => gmdate('c', strtotime($attendee['registered_at'])),
+      ];
+    }
+  }
+  foreach ($rows as &$row) {
+    $row['attendees_json'] = json_encode($attendeesByEvent[(int)$row['id']] ?? []);
+  }
+  unset($row);
   Http::json(['events' => array_map('LinkLearn\\Transform::event', $rows)]);
 }
 
@@ -585,10 +722,13 @@ if ($path === '/api/events/registrations/mine' && $method === 'GET') {
 }
 
 if (preg_match('#^/api/events/(\\d+)/attendance/(\\d+)$#', $path, $m) && $method === 'PATCH') {
-  Auth::requireRole(['admin']);
+  $me = Auth::requireUser();
   $eventId = (int)$m[1];
   $uid = (int)$m[2];
   $pdo = Db::pdo();
+  $own = $pdo->prepare("SELECT 1 FROM events WHERE id=? AND user_id=?");
+  $own->execute([$eventId, (int)$me['id']]);
+  if (!$own->fetchColumn() && ($me['role'] ?? '') !== 'admin') Http::json(['error' => 'forbidden'], 403);
   $pdo->prepare("UPDATE event_attendees SET attended=1 WHERE event_id=? AND user_id=?")->execute([$eventId, $uid]);
   Http::json(['ok' => true]);
 }
@@ -726,6 +866,24 @@ if (preg_match('#^/api/vacancies/(\\d+)/applicants/(\\d+)/status$#', $path, $m) 
 }
 
 // --- REQUIREMENTS ---
+if ($path === '/api/vendors' && $method === 'GET') {
+  Auth::requireUser();
+  $pdo = Db::pdo();
+  $stmt = $pdo->query("SELECT id, name, email, role, avatar_url AS avatar, bio, catalogue_json, org_type, verified_badge FROM users WHERE role='vendor' AND account_status='active' ORDER BY name ASC LIMIT 200");
+  $vendors = array_map(static fn($row) => [
+    'id' => (string)$row['id'],
+    'name' => $row['name'],
+    'email' => $row['email'],
+    'role' => $row['role'],
+    'avatar' => $row['avatar'] ?? '',
+    'bio' => $row['bio'] ?? '',
+    'catalogue' => ll_json_decode_array($row['catalogue_json'] ?? '[]'),
+    'orgType' => $row['org_type'] ?? '',
+    'verifiedBadge' => (bool)($row['verified_badge'] ?? false),
+  ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+  Http::json(['vendors' => $vendors]);
+}
+
 if ($path === '/api/requirements' && $method === 'GET') {
   Auth::requireUser();
   $status = (string)($_GET['status'] ?? 'open');
@@ -862,13 +1020,36 @@ if (preg_match('#^/api/requirements/(\\d+)/award$#', $path, $m) && $method === '
 
 // --- ADS ---
 if ($path === '/api/ads' && $method === 'GET') {
-  Auth::requireUser();
+  $me = Auth::requireUser();
   $status = (string)($_GET['status'] ?? 'approved');
+  $placement = trim((string)($_GET['placement'] ?? ''));
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT * FROM ads WHERE status=? ORDER BY created_at DESC LIMIT 200");
-  $stmt->execute([$status]);
+  $sql = "SELECT * FROM ads WHERE status=?";
+  $params = [$status];
+  if ($placement !== '') {
+    $sql .= " AND placement=?";
+    $params[] = $placement;
+  }
+  $sql .= " ORDER BY created_at DESC LIMIT 200";
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute($params);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-  Http::json(['ads' => array_map('LinkLearn\\Transform::ad', $rows)]);
+  $roleAudience = [
+    'student' => 'Students',
+    'researcher' => 'Researchers',
+    'institution' => 'Institutions',
+    'govt_body' => 'Institutions',
+    'ngo' => 'Funding Agencies',
+    'vendor' => 'Vendors',
+    'advertiser' => 'Institutions',
+    'admin' => 'Institutions',
+  ];
+  $segment = $roleAudience[$me['role'] ?? ''] ?? '';
+  $ads = array_values(array_filter(array_map('LinkLearn\\Transform::ad', $rows), static function($ad) use ($segment) {
+    $audience = $ad['targetAudience'] ?? [];
+    return count($audience) === 0 || in_array($segment, $audience, true);
+  }));
+  Http::json(['ads' => $ads]);
 }
 
 if ($path === '/api/ads' && $method === 'POST') {
@@ -1064,6 +1245,126 @@ if ($path === '/api/conversations' && $method === 'GET') {
   Http::json(['conversations' => $out]);
 }
 
+if ($path === '/api/group-conversations' && $method === 'GET') {
+  $me = Auth::requireUser();
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("
+    SELECT g.*
+    FROM group_conversations g
+    JOIN group_conversation_members mine ON mine.group_id = g.id AND mine.user_id=?
+    ORDER BY COALESCE(g.last_message_at, g.created_at) DESC
+    LIMIT 100
+  ");
+  $stmt->execute([(int)$me['id']]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $membersByGroup = [];
+  if (count($rows) > 0) {
+    $groupIds = array_map(static fn($g) => (int)$g['id'], $rows);
+    $in = implode(',', array_fill(0, count($groupIds), '?'));
+    $members = $pdo->prepare("
+      SELECT gm.group_id, u.id, u.name, u.role, u.avatar_url AS avatar
+      FROM group_conversation_members gm
+      JOIN users u ON u.id = gm.user_id
+      WHERE gm.group_id IN ($in)
+      ORDER BY u.name ASC
+    ");
+    $members->execute($groupIds);
+    foreach ($members->fetchAll(PDO::FETCH_ASSOC) as $member) {
+      $membersByGroup[(int)$member['group_id']][] = [
+        'id' => (string)$member['id'],
+        'name' => $member['name'],
+        'role' => $member['role'],
+        'avatar' => $member['avatar'] ?? '',
+      ];
+    }
+  }
+  $groups = array_map(static fn($g) => [
+    'id' => (string)$g['id'],
+    'name' => $g['name'],
+    'ownerId' => (string)$g['owner_id'],
+    'participants' => $membersByGroup[(int)$g['id']] ?? [],
+    'lastMessage' => $g['last_message'] ?? '',
+    'lastMessageAt' => $g['last_message_at'] ? gmdate('c', strtotime($g['last_message_at'])) : null,
+    'createdAt' => gmdate('c', strtotime($g['created_at'])),
+    'type' => 'group',
+  ], $rows);
+  Http::json(['groups' => $groups]);
+}
+
+if ($path === '/api/group-conversations' && $method === 'POST') {
+  $me = Auth::requireUser();
+  $body = Http::jsonBody();
+  $name = trim((string)($body['name'] ?? ''));
+  $memberIds = $body['memberIds'] ?? [];
+  if ($name === '') Http::json(['error' => 'name required'], 400);
+  if (!is_array($memberIds)) $memberIds = [];
+  $memberIds = array_values(array_unique(array_filter(array_map('intval', $memberIds), static fn($id) => $id > 0)));
+  $memberIds[] = (int)$me['id'];
+  $memberIds = array_values(array_unique($memberIds));
+  if (count($memberIds) < 3) Http::json(['error' => 'Add at least two other members'], 400);
+  $pdo = Db::pdo();
+  foreach ($memberIds as $memberId) {
+    if ($memberId !== (int)$me['id'] && !Auth::areConnected((int)$me['id'], $memberId)) {
+      Http::json(['error' => 'Group members must be accepted connections'], 403);
+    }
+  }
+  $pdo->beginTransaction();
+  $pdo->prepare("INSERT INTO group_conversations (name, owner_id) VALUES (?, ?)")->execute([$name, (int)$me['id']]);
+  $groupId = (int)$pdo->lastInsertId();
+  $insert = $pdo->prepare("INSERT INTO group_conversation_members (group_id, user_id) VALUES (?, ?)");
+  foreach ($memberIds as $memberId) $insert->execute([$groupId, $memberId]);
+  $pdo->commit();
+  Http::json(['ok' => true, 'id' => (string)$groupId]);
+}
+
+if (preg_match('#^/api/group-conversations/(\\d+)/messages$#', $path, $m) && $method === 'GET') {
+  $me = Auth::requireUser();
+  $groupId = (int)$m[1];
+  $pdo = Db::pdo();
+  $member = $pdo->prepare("SELECT 1 FROM group_conversation_members WHERE group_id=? AND user_id=?");
+  $member->execute([$groupId, (int)$me['id']]);
+  if (!$member->fetchColumn()) Http::json(['error' => 'forbidden'], 403);
+  $stmt = $pdo->prepare("
+    SELECT gm.*, u.name AS sender_name, u.avatar_url AS sender_avatar
+    FROM group_messages gm
+    JOIN users u ON u.id = gm.sender_id
+    WHERE gm.group_id=?
+    ORDER BY gm.created_at ASC
+    LIMIT 500
+  ");
+  $stmt->execute([$groupId]);
+  $messages = array_map(static fn($msg) => [
+    'id' => (string)$msg['id'],
+    'senderId' => (string)$msg['sender_id'],
+    'senderName' => $msg['sender_name'],
+    'senderAvatar' => $msg['sender_avatar'] ?? '',
+    'text' => $msg['text'],
+    'createdAt' => gmdate('c', strtotime($msg['created_at'])),
+    'read' => true,
+  ], $stmt->fetchAll(PDO::FETCH_ASSOC));
+  Http::json(['messages' => $messages]);
+}
+
+if (preg_match('#^/api/group-conversations/(\\d+)/messages$#', $path, $m) && $method === 'POST') {
+  $me = Auth::requireUser();
+  $groupId = (int)$m[1];
+  $body = Http::jsonBody();
+  $text = trim((string)($body['text'] ?? ''));
+  if ($text === '') Http::json(['error' => 'text required'], 400);
+  $pdo = Db::pdo();
+  $member = $pdo->prepare("SELECT 1 FROM group_conversation_members WHERE group_id=? AND user_id=?");
+  $member->execute([$groupId, (int)$me['id']]);
+  if (!$member->fetchColumn()) Http::json(['error' => 'forbidden'], 403);
+  $pdo->prepare("INSERT INTO group_messages (group_id, sender_id, text) VALUES (?, ?, ?)")->execute([$groupId, (int)$me['id'], $text]);
+  $pdo->prepare("UPDATE group_conversations SET last_message=?, last_message_at=NOW() WHERE id=?")->execute([$text, $groupId]);
+  $recipients = $pdo->prepare("SELECT user_id FROM group_conversation_members WHERE group_id=? AND user_id<>?");
+  $recipients->execute([$groupId, (int)$me['id']]);
+  foreach ($recipients->fetchAll(PDO::FETCH_ASSOC) as $recipient) {
+    LinkLearn\Notification::send((int)$recipient['user_id'], (int)$me['id'], 'group_message', 'sent a group message', $groupId);
+  }
+  Http::json(['ok' => true]);
+}
+
 if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method === 'GET') {
   $me = Auth::requireUser();
   $otherId = (int)$m[1];
@@ -1110,6 +1411,64 @@ if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method =
 }
 
 // --- ADMIN USERS ---
+if ($path === '/api/admin/overview' && $method === 'GET') {
+  Auth::requireRole(['admin']);
+  $pdo = Db::pdo();
+
+  $count = static function(string $sql) use ($pdo): int {
+    return (int)$pdo->query($sql)->fetchColumn();
+  };
+
+  $roleRows = $pdo->query("SELECT role, COUNT(*) AS total FROM users GROUP BY role ORDER BY total DESC")->fetchAll(PDO::FETCH_ASSOC);
+  $statusRows = $pdo->query("SELECT account_status AS status, COUNT(*) AS total FROM users GROUP BY account_status")->fetchAll(PDO::FETCH_ASSOC);
+  $dailyUsers = $pdo->query("SELECT DATE(created_at) AS day, COUNT(*) AS total FROM users GROUP BY DATE(created_at) ORDER BY day DESC LIMIT 14")->fetchAll(PDO::FETCH_ASSOC);
+  $dailyContent = $pdo->query("
+    SELECT DATE(created_at) AS day, 'posts' AS kind, COUNT(*) AS total FROM posts GROUP BY DATE(created_at)
+    UNION ALL
+    SELECT DATE(created_at) AS day, 'articles' AS kind, COUNT(*) AS total FROM articles GROUP BY DATE(created_at)
+    UNION ALL
+    SELECT DATE(created_at) AS day, 'events' AS kind, COUNT(*) AS total FROM events GROUP BY DATE(created_at)
+    ORDER BY day DESC
+    LIMIT 42
+  ")->fetchAll(PDO::FETCH_ASSOC);
+  $adStats = $pdo->query("SELECT status, COUNT(*) AS total, COALESCE(SUM(impressions),0) AS impressions, COALESCE(SUM(clicks),0) AS clicks FROM ads GROUP BY status")->fetchAll(PDO::FETCH_ASSOC);
+
+  $recentStmt = $pdo->query("SELECT id, email, name, role, login_type AS loginType, account_status AS accountStatus, profile_completed AS profileCompleted, avatar_url AS avatar, verified_badge AS verifiedBadge, bio, certificates_json AS certificatesJson, created_at AS createdAt, updated_at AS updatedAt FROM users ORDER BY created_at DESC LIMIT 6");
+  $recentUsers = array_map('LinkLearn\\Transform::adminUser', $recentStmt->fetchAll(PDO::FETCH_ASSOC));
+
+  Http::json([
+    'totals' => [
+      'users' => $count("SELECT COUNT(*) FROM users"),
+      'pendingInstitutions' => $count("SELECT COUNT(*) FROM users WHERE login_type='institutional' AND account_status='pending'"),
+      'pendingArticles' => $count("SELECT COUNT(*) FROM articles WHERE status='pending'"),
+      'pendingAds' => $count("SELECT COUNT(*) FROM ads WHERE status='pending'"),
+      'publishedArticles' => $count("SELECT COUNT(*) FROM articles WHERE status='published'"),
+      'activeCampaigns' => $count("SELECT COUNT(*) FROM ads WHERE status='approved'"),
+      'events' => $count("SELECT COUNT(*) FROM events"),
+      'eventRegistrations' => $count("SELECT COUNT(*) FROM event_attendees"),
+      'checkedInAttendees' => $count("SELECT COUNT(*) FROM event_attendees WHERE attended=1"),
+      'openVacancies' => $count("SELECT COUNT(*) FROM vacancies WHERE status='open'"),
+      'applications' => $count("SELECT COUNT(*) FROM vacancy_applicants"),
+      'openRequirements' => $count("SELECT COUNT(*) FROM requirements WHERE status='open'"),
+      'vendorQuotes' => $count("SELECT COUNT(*) FROM requirement_quotes"),
+      'endorsements' => $count("SELECT COUNT(*) FROM user_endorsements"),
+      'groups' => $count("SELECT COUNT(*) FROM group_conversations"),
+    ],
+    'usersByRole' => array_map(static fn($r) => ['role' => $r['role'], 'total' => (int)$r['total']], $roleRows),
+    'usersByStatus' => array_map(static fn($r) => ['status' => $r['status'], 'total' => (int)$r['total']], $statusRows),
+    'dailyUsers' => array_map(static fn($r) => ['day' => $r['day'], 'total' => (int)$r['total']], $dailyUsers),
+    'dailyContent' => array_map(static fn($r) => ['day' => $r['day'], 'kind' => $r['kind'], 'total' => (int)$r['total']], $dailyContent),
+    'adsByStatus' => array_map(static fn($r) => [
+      'status' => $r['status'],
+      'total' => (int)$r['total'],
+      'impressions' => (int)$r['impressions'],
+      'clicks' => (int)$r['clicks'],
+      'ctr' => ((int)$r['impressions']) > 0 ? round(((int)$r['clicks'] / (int)$r['impressions']) * 100, 2) : 0,
+    ], $adStats),
+    'recentUsers' => $recentUsers,
+  ]);
+}
+
 if ($path === '/api/admin/users' && $method === 'GET') {
   Auth::requireRole(['admin']);
   $pdo = Db::pdo();

@@ -20,9 +20,15 @@ export const updateAdStatus = async (adId, status, reason = '') => {
 
 export const subscribeAds = (callback) => {
   return poll(async () => {
-    const { ads } = await apiFetch('/api/ads?status=approved');
+    const { ads } = await apiFetch('/api/ads?status=approved&placement=feed');
     callback(ads || []);
   }, 10000);
+};
+
+export const getApprovedAds = async (placement = '') => {
+  const query = placement ? `&placement=${encodeURIComponent(placement)}` : '';
+  const { ads } = await apiFetch(`/api/ads?status=approved${query}`);
+  return ads || [];
 };
 
 export const recordAdImpression = async (adId) => {

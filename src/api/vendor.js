@@ -21,6 +21,11 @@ export const getMyRequirements = async () => {
   return requirements || [];
 };
 
+export const getVendors = async () => {
+  const { vendors } = await apiFetch('/api/vendors');
+  return vendors || [];
+};
+
 export const upsertVendorCatalogue = async (_uidIgnored, catalogue) => {
   const { user } = await apiFetch('/api/users/me/catalogue', { method: 'PATCH', body: { catalogue } });
   return user;

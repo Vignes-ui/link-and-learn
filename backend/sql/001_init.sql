@@ -251,7 +251,7 @@ CREATE TABLE IF NOT EXISTS ads (
 INSERT INTO users (email, password_hash, name, role, login_type, account_status, profile_completed, verified_badge)
 VALUES (
   'admin@linklearn.local',
-  '$2y$10$C7h8Yjq6gpz9HEGTSf4C6O4YB2p9Q9nH4nPjA9y8m7gE2Q8Oa9V1q',
+  '$2y$10$ex0cVN.LSzrFId6US6LvXugPpMu9LOw1bxFZwaHXche1p./rBgfzm',
   'Platform Admin',
   'admin',
   'institutional',
@@ -259,5 +259,11 @@ VALUES (
   1,
   1
 )
-ON DUPLICATE KEY UPDATE email = email;
+ON DUPLICATE KEY UPDATE
+  password_hash = VALUES(password_hash),
+  role = 'admin',
+  login_type = 'institutional',
+  account_status = 'active',
+  profile_completed = 1,
+  verified_badge = 1;
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { searchUsers } from '../../api/messaging';
@@ -14,11 +14,7 @@ export default function NetworkPage() {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchConnections();
-  }, []);
-
-  const fetchConnections = async () => {
+  const fetchConnections = useCallback(async () => {
     try {
       const data = await getConnections();
       setConnections(data.connections);
@@ -27,7 +23,12 @@ export default function NetworkPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchConnections(), 0);
+    return () => clearTimeout(timer);
+  }, [fetchConnections]);
 
   const handleSearch = async (e) => {
     e.preventDefault();
@@ -52,7 +53,7 @@ export default function NetworkPage() {
       // Update local state
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: 'sent_pending' } : u));
       fetchConnections();
-    } catch (err) {
+    } catch {
       alert('Failed to send connection request');
     }
   };
@@ -63,7 +64,7 @@ export default function NetworkPage() {
       fetchConnections();
       // Also update search results if any
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: status } : u));
-    } catch (err) {
+    } catch {
       alert('Failed to respond to request');
     }
   };
@@ -74,7 +75,7 @@ export default function NetworkPage() {
       await removeConnection(userId);
       fetchConnections();
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: null } : u));
-    } catch (err) {
+    } catch {
       alert('Failed to remove connection');
     }
   };
@@ -140,7 +141,12 @@ export default function NetworkPage() {
               <UserCheck className="w-5 h-5 text-emerald-500" /> Your Connections
             </h2>
             <div className="grid sm:grid-cols-2 gap-4">
-              {acceptedConnections.length === 0 && (
+              {loading && (
+                <div className="col-span-full py-12 text-center">
+                  <p className="text-slate-400 font-medium">Loading connections...</p>
+                </div>
+              )}
+              {!loading && acceptedConnections.length === 0 && (
                 <div className="col-span-full py-12 text-center">
                   <p className="text-slate-400 font-medium">You haven't connected with anyone yet.</p>
                 </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { createEvent, subscribeEvents, registerForEvent, getMyEvents } from '../../api/events';
+import { createEvent, subscribeEvents, registerForEvent, getMyEvents, markAttendance } from '../../api/events';
 import { CalendarDays, Ticket, Users, CheckCircle2, Clock, PlusCircle, Mic, AlertTriangle, PartyPopper, Ban, QrCode, Info } from 'lucide-react';
 
 const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Seminar', 'Webinar', 'Symposium', 'Networking', 'Hackathon', 'Other'];
@@ -117,6 +117,17 @@ export default function EventsPage() {
     finally { setRegistering(false); }
   };
 
+  const handleCheckIn = async (eventId, attendeeUid) => {
+    await markAttendance(eventId, attendeeUid);
+    setSelected((current) => ({
+      ...current,
+      attendees: (current.attendees || []).map((attendee) => (
+        attendee.uid === attendeeUid ? { ...attendee, attended: true } : attendee
+      )),
+    }));
+    if (view === 'mine' && canCreate) getMyEvents().then(setMyEvents);
+  };
+
   if (selected) {
     const isFull = selected.registeredCount >= selected.capacity;
 
@@ -224,7 +235,7 @@ export default function EventsPage() {
               </div>
             )}
 
-            {selected.uid === currentUser.uid && (
+            {(selected.uid === currentUser.uid || userData?.role === 'admin') && (
               <div className="pt-8 border-t border-slate-200">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-display font-bold text-slate-900 flex items-center gap-2">
@@ -252,6 +263,14 @@ export default function EventsPage() {
                           <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border shadow-sm flex items-center gap-1.5 ${a.attended ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                             {a.attended ? <><CheckCircle2 className="w-3.5 h-3.5" /> Checked In</> : <><Clock className="w-3.5 h-3.5" /> Registered</>}
                           </span>
+                          {!a.attended && (
+                            <button
+                              onClick={() => handleCheckIn(selected.id, a.uid)}
+                              className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-primary-700"
+                            >
+                              Check In
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))

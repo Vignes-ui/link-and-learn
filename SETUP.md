@@ -38,9 +38,31 @@ LoadModule rewrite_module modules/mod_rewrite.so
 
 - Open phpMyAdmin: http://localhost/phpmyadmin
 - Create a new database called `linklearn`
-- Import `backend/sql/001_init.sql` into it
+- Import the SQL files in this exact order:
 
-## 6. Start the frontend
+```
+backend/sql/001_init.sql
+backend/sql/002_connections.sql
+backend/sql/003_notifications.sql
+backend/sql/004_ads.sql
+backend/sql/005_institution_endorsements_groups.sql
+```
+
+These scripts are written with `CREATE TABLE IF NOT EXISTS`, so they are safe to rerun when a local database is missing a later feature table. The seeded admin account is:
+
+```
+Email: admin@linklearn.local
+Password: admin123
+```
+
+## 6. Deployment checklist
+
+- Confirm all SQL files above have been imported on the target database.
+- Confirm `vite.config.js` points `/api` and `/uploads` to the PHP server port.
+- Confirm `backend/uploads/` is writable by the PHP process.
+- Sign in as the seeded admin and open `/admin`; the overview, users, articles, and ads calls should all return without server errors.
+
+## 7. Start the frontend
 
 ```bash
 npm install

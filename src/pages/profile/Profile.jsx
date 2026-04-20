@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { updateProfile, uploadAvatar, uploadCertificate, deleteAccount } from '../../api/profile';
+import { updateProfile, uploadAvatar, uploadCertificate, deleteAccount, getInstitutions, getMyInstitutionLinks, linkInstitution, unlinkInstitution } from '../../api/profile';
 import { Camera, CheckCircle2, Clock, XCircle, Info, GraduationCap, Paperclip, FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { downloadResumePdf } from '../../utils/resumePdf';
 
 const SKILL_SUGGESTIONS = ['React','Python','Machine Learning','Data Science','Research','Teaching','JavaScript','Firebase','Java','C++','Deep Learning','NLP'];
 
 export default function Profile() {
-  const { currentUser, userData, setUserData, logout } = useAuth();
+  const { currentUser, userData, logout } = useAuth();
   const [tab, setTab] = useState('overview');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
@@ -24,17 +24,32 @@ export default function Profile() {
   const [publications, setPublications] = useState([]);
   const [certDegree, setCertDegree] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [institutions, setInstitutions] = useState([]);
+  const [linkedInstitutions, setLinkedInstitutions] = useState([]);
+  const [institutionId, setInstitutionId] = useState('');
+  const [departmentsText, setDepartmentsText] = useState('');
+  const [orgType, setOrgType] = useState('');
 
   useEffect(() => {
     if (userData) {
-      setName(userData.name || '');
-      setBio(userData.bio || '');
-      setSkills(userData.skills || []);
-      setEducation(userData.education || []);
-      setExperience(userData.experience || []);
-      setPublications(userData.publications || []);
+      const timer = setTimeout(() => {
+        setName(userData.name || '');
+        setBio(userData.bio || '');
+        setSkills(userData.skills || []);
+        setEducation(userData.education || []);
+        setExperience(userData.experience || []);
+        setPublications(userData.publications || []);
+        setDepartmentsText((userData.departments || []).join(', '));
+        setOrgType(userData.orgType || '');
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [userData]);
+
+  useEffect(() => {
+    getInstitutions().then(setInstitutions).catch(() => {});
+    getMyInstitutionLinks().then(setLinkedInstitutions).catch(() => {});
+  }, []);
 
   const save = async (data) => {
     setSaving(true); setMsg('');
@@ -51,7 +66,7 @@ export default function Profile() {
     try {
       await deleteAccount();
       await logout();
-    } catch (err) {
+    } catch {
       alert('Failed to delete account. Please try again.');
     }
   };
@@ -82,6 +97,19 @@ export default function Profile() {
   const addEdu = () => setEducation([...education, { degree:'', institution:'', year:'' }]);
   const addExp = () => setExperience([...experience, { title:'', company:'', from:'', to:'', current:false }]);
   const addPub = () => setPublications([...publications, { title:'', journal:'', year:'', link:'' }]);
+  const isInstitutional = userData?.loginType === 'institutional';
+
+  const handleInstitutionLink = async () => {
+    if (!institutionId) return;
+    await linkInstitution(institutionId);
+    setLinkedInstitutions(await getMyInstitutionLinks());
+    setInstitutionId('');
+  };
+
+  const handleInstitutionUnlink = async (id) => {
+    await unlinkInstitution(id);
+    setLinkedInstitutions(await getMyInstitutionLinks());
+  };
 
   const tabs = ['overview', 'skills', 'education', 'experience', 'publications', 'certificates'];
 
@@ -208,6 +236,70 @@ export default function Profile() {
                   </button>
                 </div>
               </div>
+
+              {isInstitutional ? (
+                <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h3 className="mb-4 text-lg font-bold text-slate-900">Institution profile</h3>
+                  <div className="space-y-4">
+                    <input
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 outline-none focus:ring-2 focus:ring-primary-500"
+                      placeholder="Organisation type, e.g. University, Vendor, Funding Agency"
+                      value={orgType}
+                      onChange={(e) => setOrgType(e.target.value)}
+                    />
+                    <textarea
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3.5 outline-none focus:ring-2 focus:ring-primary-500"
+                      rows={3}
+                      placeholder="Departments or service areas, comma separated"
+                      value={departmentsText}
+                      onChange={(e) => setDepartmentsText(e.target.value)}
+                    />
+                    <button
+                      onClick={() => save({ orgType, departments: departmentsText.split(',').map((item) => item.trim()).filter(Boolean) })}
+                      disabled={saving}
+                      className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Save Institution Details
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <h3 className="mb-4 text-lg font-bold text-slate-900">Linked institutions</h3>
+                  <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+                    <select
+                      className="min-h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary-500"
+                      value={institutionId}
+                      onChange={(e) => setInstitutionId(e.target.value)}
+                    >
+                      <option value="">Select an approved institution</option>
+                      {institutions.map((institution) => (
+                        <option key={institution.id} value={institution.id}>{institution.name} ({institution.role?.replace('_', ' ')})</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleInstitutionLink}
+                      disabled={!institutionId}
+                      className="rounded-xl bg-primary-600 px-5 py-3 text-sm font-bold text-white hover:bg-primary-700 disabled:opacity-50"
+                    >
+                      Link
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {linkedInstitutions.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-500">No institution linked yet.</p>
+                    ) : linkedInstitutions.map((institution) => (
+                      <div key={institution.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                        <div>
+                          <p className="text-sm font-bold text-slate-900">{institution.name}</p>
+                          <p className="text-xs font-medium capitalize text-slate-500">{institution.role?.replace('_', ' ')}</p>
+                        </div>
+                        <button onClick={() => handleInstitutionUnlink(institution.id)} className="text-sm font-bold text-red-600 hover:underline">Remove</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

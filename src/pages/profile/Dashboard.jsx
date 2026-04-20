@@ -10,12 +10,13 @@ export default function Dashboard() {
   const [stats, setStats] = useState({ posts: 0, applications: 0, events: 0, articles: 0 });
   const [recentActivity, setRecentActivity] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (!currentUser) return;
     const loadStats = async () => {
       try {
-        const [{ posts }, { vacancies }, { events }, { articles }, feed] = await Promise.all([
+        const [{ posts }, { vacancies }, _events, { articles }, feed] = await Promise.all([
           apiFetch('/api/posts?limit=100'),
           apiFetch('/api/vacancies?status=open'),
           apiFetch('/api/events'),
@@ -36,16 +37,20 @@ export default function Dashboard() {
     loadStats();
   }, [currentUser]);
 
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   const timeAgo = (ts) => {
     if (!ts) return '';
     const d = ts.toDate ? ts.toDate() : new Date(ts);
-    const secs = Math.floor((Date.now()-d)/1000);
+    const secs = Math.floor((now-d)/1000);
     if (secs < 3600) return Math.floor(secs/60) + 'm ago';
     if (secs < 86400) return Math.floor(secs/3600) + 'h ago';
     return Math.floor(secs/86400) + 'd ago';
   };
 
-  const isInstitutional = ['institution','govt_body','ngo','vendor'].includes(userRole);
   const quickLinks = [
     { label: 'Professional Feed', path: '/feed', show: true, icon: <FileText className="w-6 h-6" />, color: 'from-blue-500 to-blue-600' },
     { label: 'Journals & Articles', path: '/articles', show: true, icon: <BookOpen className="w-6 h-6" />, color: 'from-indigo-500 to-indigo-600' },
@@ -164,7 +169,7 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {recentActivity.map((post, idx) => (
+                {recentActivity.map((post) => (
                   <div key={post.id} className="group flex items-start gap-4 p-4 rounded-2xl hover:bg-white/60 transition-all duration-300 border border-transparent hover:border-slate-100 hover:shadow-sm">
                     <img 
                       src={`https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName||'U')}&background=3b82f6&color=fff&size=48`} 

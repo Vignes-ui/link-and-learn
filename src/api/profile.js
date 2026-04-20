@@ -26,6 +26,33 @@ export const getUserById = async (id) => {
   return user ? { id: String(user.id), ...user } : null;
 };
 
+export const getInstitutions = async () => {
+  const { institutions } = await apiFetch('/api/institutions');
+  return institutions || [];
+};
+
+export const getMyInstitutionLinks = async () => {
+  const { links } = await apiFetch('/api/institution-links');
+  return links || [];
+};
+
+export const linkInstitution = async (institutionId) => {
+  return apiFetch('/api/institution-links', { method: 'POST', body: { institutionId } });
+};
+
+export const unlinkInstitution = async (institutionId) => {
+  return apiFetch(`/api/institution-links/${institutionId}`, { method: 'DELETE' });
+};
+
+export const getEndorsements = async (userId) => {
+  const { endorsements } = await apiFetch(`/api/users/${userId}/endorsements`);
+  return endorsements || [];
+};
+
+export const createEndorsement = async (userId, endorsement) => {
+  return apiFetch(`/api/users/${userId}/endorsements`, { method: 'POST', body: endorsement });
+};
+
 export const getAllUsers = async () => {
   const { users } = await apiFetch('/api/admin/users');
   return users;

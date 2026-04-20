@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { getUserById } from '../../api/profile';
+import { getUserById, getEndorsements, createEndorsement } from '../../api/profile';
 import { getConnections, requestConnection, removeConnection } from '../../api/connections';
-import { MessageSquare, UserPlus, CheckCircle2, Clock, GraduationCap, Briefcase, FileText, ChevronRight, Mail, Calendar, UserX } from 'lucide-react';
+import { MessageSquare, UserPlus, CheckCircle2, Clock, GraduationCap, Briefcase, FileText, ChevronRight, Mail, UserX, BadgeCheck } from 'lucide-react';
 
 export default function UserProfile() {
   const { id } = useParams();
@@ -13,19 +13,16 @@ export default function UserProfile() {
   const [loading, setLoading] = useState(true);
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [tab, setTab] = useState('overview');
+  const [endorsements, setEndorsements] = useState([]);
+  const [endorsementSkill, setEndorsementSkill] = useState('');
+  const [endorsementComment, setEndorsementComment] = useState('');
+  const [endorsementMsg, setEndorsementMsg] = useState('');
 
-  useEffect(() => {
-    if (id === currentUser.uid) {
-      navigate('/profile');
-      return;
-    }
-    fetchUser();
-  }, [id, currentUser.uid]);
-
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     try {
       const u = await getUserById(id);
       setUser(u);
+      setEndorsements(await getEndorsements(id));
       
       const { connections } = await getConnections();
       const conn = connections.find(c => c.id === String(id));
@@ -35,13 +32,37 @@ export default function UserProfile() {
     } finally {
       setLoading(false);
     }
+  }, [id]);
+
+  useEffect(() => {
+    if (id === currentUser.uid) {
+      navigate('/profile');
+      return;
+    }
+    const timer = setTimeout(() => fetchUser(), 0);
+    return () => clearTimeout(timer);
+  }, [id, currentUser.uid, fetchUser, navigate]);
+
+  const handleEndorse = async (e) => {
+    e.preventDefault();
+    if (!endorsementSkill.trim()) return;
+    try {
+      await createEndorsement(id, { skill: endorsementSkill.trim(), comment: endorsementComment.trim() });
+      setEndorsementSkill('');
+      setEndorsementComment('');
+      setEndorsements(await getEndorsements(id));
+      setEndorsementMsg('Endorsement submitted');
+      setTimeout(() => setEndorsementMsg(''), 2500);
+    } catch (err) {
+      setEndorsementMsg(err.message || 'Unable to endorse this profile');
+    }
   };
 
   const handleConnect = async () => {
     try {
       await requestConnection(id);
       setConnectionStatus('sent_pending');
-    } catch (err) {
+    } catch {
       alert('Failed to send connection request');
     }
   };
@@ -51,7 +72,7 @@ export default function UserProfile() {
       if (!window.confirm('Are you sure you want to remove this connection?')) return;
       await removeConnection(id);
       setConnectionStatus(null);
-    } catch (err) {
+    } catch {
       alert('Failed to remove connection');
     }
   };
@@ -154,6 +175,63 @@ export default function UserProfile() {
                 ))
               ) : <p className="text-xs text-slate-400 italic">No skills listed</p>}
             </div>
+          </div>
+
+          {user.institutions?.length > 0 && (
+            <div className="glass-panel rounded-[2rem] p-6 border border-white/60 shadow-sm">
+              <h3 className="text-lg font-display font-bold text-slate-900 mb-4">Institutions</h3>
+              <div className="space-y-3">
+                {user.institutions.map((institution) => (
+                  <button
+                    key={institution.id}
+                    onClick={() => navigate(`/profile/${institution.id}`)}
+                    className="w-full rounded-xl bg-white p-3 text-left shadow-sm border border-slate-100 hover:border-primary-200"
+                  >
+                    <p className="text-sm font-bold text-slate-900">{institution.name}</p>
+                    <p className="text-xs font-medium capitalize text-slate-500">{institution.role?.replace('_', ' ')}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="glass-panel rounded-[2rem] p-6 border border-white/60 shadow-sm">
+            <h3 className="text-lg font-display font-bold text-slate-900 mb-4">Endorsements</h3>
+            <div className="space-y-3">
+              {endorsements.length === 0 ? (
+                <p className="text-xs text-slate-400 italic">No endorsements yet.</p>
+              ) : endorsements.slice(0, 4).map((endorsement) => (
+                <div key={endorsement.id} className="rounded-xl bg-white p-3 border border-slate-100">
+                  <p className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                    <BadgeCheck className="w-4 h-4 text-emerald-500" />
+                    {endorsement.skill}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">By {endorsement.endorser.name}</p>
+                  {endorsement.comment && <p className="mt-2 text-sm text-slate-600">{endorsement.comment}</p>}
+                </div>
+              ))}
+            </div>
+            {connectionStatus === 'accepted' && (
+              <form onSubmit={handleEndorse} className="mt-5 space-y-3 border-t border-slate-100 pt-4">
+                {endorsementMsg && <p className="text-xs font-bold text-primary-600">{endorsementMsg}</p>}
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="Skill or strength"
+                  value={endorsementSkill}
+                  onChange={(e) => setEndorsementSkill(e.target.value)}
+                />
+                <textarea
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                  rows={3}
+                  placeholder="Optional reference note"
+                  value={endorsementComment}
+                  onChange={(e) => setEndorsementComment(e.target.value)}
+                />
+                <button className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800">
+                  Endorse
+                </button>
+              </form>
+            )}
           </div>
         </div>
 

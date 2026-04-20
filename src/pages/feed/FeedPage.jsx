@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { createPost, subscribeFeed, toggleLike, addComment, deletePost } from '../../api/posts';
 import { getConnections, requestConnection } from '../../api/connections';
-import { subscribeAds, recordAdImpression, recordAdClick } from '../../api/ads';
+import { subscribeAds, recordAdImpression, recordAdClick, getApprovedAds } from '../../api/ads';
 import { Send, FileText, UserPlus, Clock as ClockIcon } from 'lucide-react';
 
 export default function FeedPage() {
@@ -11,44 +11,52 @@ export default function FeedPage() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [ads, setAds] = useState([]);
+  const [bannerAds, setBannerAds] = useState([]);
   const [content, setContent] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [posting, setPosting] = useState(false);
   const [commentText, setCommentText] = useState({});
   const [openComments, setOpenComments] = useState({});
   const [myConnections, setMyConnections] = useState([]);
+  const [now, setNow] = useState(() => Date.now());
   const seenAdIds = useRef(new Set());
+
+  const fetchConnections = useCallback(async () => {
+    try {
+      const { connections } = await getConnections();
+      setMyConnections(connections);
+    } catch (error) {
+      console.error(error);
+    }
+  }, []);
 
   useEffect(() => {
     const unsub = subscribeFeed(setPosts);
     const unsubAds = subscribeAds(setAds);
-    fetchConnections();
-    return () => { unsub(); unsubAds(); };
+    getApprovedAds('banner').then(setBannerAds).catch(() => {});
+    const timer = setTimeout(() => fetchConnections(), 0);
+    return () => { clearTimeout(timer); unsub(); unsubAds(); };
+  }, [fetchConnections]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
   }, []);
 
   useEffect(() => {
-    ads.forEach((ad) => {
+    [...ads, ...bannerAds].forEach((ad) => {
       if (!seenAdIds.current.has(ad.id)) {
         seenAdIds.current.add(ad.id);
         recordAdImpression(ad.id).catch(() => {});
       }
     });
-  }, [ads]);
-
-  const fetchConnections = async () => {
-    try {
-      const { connections } = await getConnections();
-      setMyConnections(connections);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  }, [ads, bannerAds]);
 
   const handleConnect = async (userId) => {
     try {
       await requestConnection(userId);
       fetchConnections();
-    } catch (err) {
+    } catch {
       alert('Failed to connect');
     }
   };
@@ -89,7 +97,7 @@ export default function FeedPage() {
   const timeAgo = (ts) => {
     if (!ts) return '';
     const d = ts.toDate ? ts.toDate() : new Date(ts);
-    const secs = Math.floor((Date.now() - d) / 1000);
+    const secs = Math.floor((now - d) / 1000);
     if (secs < 60) return 'just now';
     if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
     if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
@@ -142,6 +150,20 @@ export default function FeedPage() {
 
       {/* Feed Area */}
       <div className="space-y-6 relative">
+        {bannerAds.slice(0, 1).map((ad) => (
+          <button
+            key={`banner-${ad.id}`}
+            onClick={() => {
+              recordAdClick(ad.id).catch(() => {});
+              if (ad.destinationUrl) window.open(ad.destinationUrl, '_blank', 'noopener,noreferrer');
+            }}
+            className="w-full rounded-2xl border border-amber-200 bg-amber-100 px-5 py-3 text-left shadow-sm hover:bg-amber-50"
+          >
+            <span className="mr-3 rounded-full bg-amber-200 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-amber-900">Banner ad</span>
+            <span className="text-sm font-bold text-slate-900">{ad.title}</span>
+            <span className="ml-2 text-sm text-slate-600">{ad.description}</span>
+          </button>
+        ))}
         {ads.slice(0, 1).map((ad) => {
           return (
             <button

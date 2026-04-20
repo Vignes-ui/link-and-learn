@@ -28,3 +28,23 @@ export const searchUsers = async (searchTerm) => {
   return (users || []).map(u => ({ id: String(u.id), ...u }));
 };
 
+export const createGroupConversation = async (name, memberIds) => {
+  return apiFetch('/api/group-conversations', { method: 'POST', body: { name, memberIds } });
+};
+
+export const getGroupConversations = async () => {
+  const { groups } = await apiFetch('/api/group-conversations');
+  return groups || [];
+};
+
+export const sendGroupMessage = async (groupId, text) => {
+  return apiFetch(`/api/group-conversations/${groupId}/messages`, { method: 'POST', body: { text } });
+};
+
+export const subscribeGroupMessages = (groupId, callback) => {
+  return poll(async () => {
+    const { messages } = await apiFetch(`/api/group-conversations/${groupId}/messages`);
+    callback(messages || []);
+  }, 1000);
+};
+

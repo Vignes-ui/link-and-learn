@@ -11,7 +11,7 @@ export const subscribeEvents = (callback) => {
   }, 5000);
 };
 
-export const registerForEvent = async (eventId, _attendeeIgnored) => {
+export const registerForEvent = async (eventId) => {
   const { ticketId } = await apiFetch(`/api/events/${eventId}/register`, { method: 'POST' });
   return ticketId;
 };

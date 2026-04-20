@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { sendMessage, subscribeMessages, subscribeConversations, searchUsers, getConversationId } from '../../api/messaging';
+import { sendMessage, subscribeMessages, subscribeConversations, searchUsers, getConversationId, createGroupConversation, getGroupConversations, sendGroupMessage, subscribeGroupMessages } from '../../api/messaging';
 import { getConnectionStatus } from '../../api/connections';
 import { getUserById } from '../../api/profile';
 import { MessageSquare, Inbox, Hand } from 'lucide-react';
 
 export default function MessagingPage() {
-  const { currentUser, userData } = useAuth();
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [conversations, setConversations] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
@@ -18,10 +18,16 @@ export default function MessagingPage() {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [activeGroup, setActiveGroup] = useState(null);
+  const [groupName, setGroupName] = useState('');
+  const [groupMembers, setGroupMembers] = useState('');
+  const [groupMsg, setGroupMsg] = useState('');
   const messagesEndRef = useRef();
 
   useEffect(() => {
     const unsub = subscribeConversations(currentUser.uid, setConversations);
+    getGroupConversations().then(setGroups).catch(() => {});
     return () => unsub();
   }, [currentUser.uid]);
 
@@ -35,6 +41,7 @@ export default function MessagingPage() {
       if (!user) return;
       
       setActiveUser(user);
+      setActiveGroup(null);
       // We don't strictly need status to open, fetch it separately to avoid blocking
       getConnectionStatus(otherUid).then(({status}) => setConnectionStatus(status));
       
@@ -54,6 +61,40 @@ export default function MessagingPage() {
     return () => unsub();
   }, [activeConv, activeUser, currentUser.uid]);
 
+  useEffect(() => {
+    if (!activeGroup) return;
+    const unsub = subscribeGroupMessages(activeGroup.id, setMessages);
+    return () => unsub();
+  }, [activeGroup]);
+
+  const openGroup = (group) => {
+    setActiveGroup(group);
+    setActiveUser(null);
+    setConnectionStatus('accepted');
+    setActiveConv(`group_${group.id}`);
+    setSearch('');
+    setSearchResults([]);
+  };
+
+  const handleCreateGroup = async (e) => {
+    e.preventDefault();
+    const memberIds = groupMembers.split(',').map((item) => item.trim()).filter(Boolean);
+    if (!groupName.trim() || memberIds.length < 2) {
+      setGroupMsg('Add a group name and at least two member IDs.');
+      return;
+    }
+    try {
+      await createGroupConversation(groupName.trim(), memberIds);
+      setGroupName('');
+      setGroupMembers('');
+      setGroupMsg('Group created');
+      setGroups(await getGroupConversations());
+      setTimeout(() => setGroupMsg(''), 2500);
+    } catch (err) {
+      setGroupMsg(err.message || 'Unable to create group');
+    }
+  };
+
   const handleSearch = async (e) => {
     const v = e.target.value;
     setSearch(v);
@@ -67,10 +108,11 @@ export default function MessagingPage() {
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!input.trim() || !activeUser) return;
+    if (!input.trim() || (!activeUser && !activeGroup)) return;
     const text = input;
     setInput('');
-    await sendMessage(currentUser.uid, activeUser.id, text);
+    if (activeGroup) await sendGroupMessage(activeGroup.id, text);
+    else await sendMessage(currentUser.uid, activeUser.id, text);
   };
 
   const getOtherUid = (conv) => conv.participants.find(p => p !== currentUser.uid);
@@ -125,6 +167,23 @@ export default function MessagingPage() {
                 ))}
               </div>
             )}
+            <form onSubmit={handleCreateGroup} className="mt-4 rounded-2xl border border-slate-200 bg-white/60 p-3 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">New group</p>
+              {groupMsg && <p className="text-xs font-bold text-primary-600">{groupMsg}</p>}
+              <input
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Group name"
+                value={groupName}
+                onChange={(e) => setGroupName(e.target.value)}
+              />
+              <input
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Member IDs, comma separated"
+                value={groupMembers}
+                onChange={(e) => setGroupMembers(e.target.value)}
+              />
+              <button className="w-full rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800">Create Group</button>
+            </form>
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -135,6 +194,16 @@ export default function MessagingPage() {
                 <p className="text-xs font-medium text-slate-400 mt-1">Search for a connection to start messaging.</p>
               </div>
             )}
+            {groups.map((group) => (
+              <button
+                key={`group-${group.id}`}
+                onClick={() => openGroup(group)}
+                className={`w-full border-b border-slate-100 p-4 text-left transition-colors ${activeGroup?.id === group.id ? 'bg-primary-50/60' : 'hover:bg-white/60'}`}
+              >
+                <p className="text-sm font-bold text-slate-900 truncate">{group.name}</p>
+                <p className="text-xs text-slate-500 truncate">{group.participants?.length || 0} members - {group.lastMessage || 'New group'}</p>
+              </button>
+            ))}
             {conversations.map(conv => {
               const otherUid = getOtherUid(conv);
               return (
@@ -154,7 +223,7 @@ export default function MessagingPage() {
 
         {/* Chat area */}
         <div className="flex-1 flex flex-col bg-white/20 z-10 relative">
-          {!activeUser ? (
+          {!activeUser && !activeGroup ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center opacity-40">
                 <div className="w-24 h-24 bg-white/50 rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm border border-white/60">
@@ -169,17 +238,17 @@ export default function MessagingPage() {
               {/* Header */}
               <div 
                 className="p-4 sm:p-5 border-b border-slate-200/60 flex items-center gap-4 bg-white/40 backdrop-blur-md cursor-pointer group"
-                onClick={() => navigate(`/profile/${activeUser.id}`)}
+                onClick={() => activeUser && navigate(`/profile/${activeUser.id}`)}
               >
                 <div className="relative">
-                  <img src={activeUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeUser.name||'U')}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full shadow-sm group-hover:ring-2 ring-primary-500 transition-all" alt="" />
+                  <img src={(activeUser?.avatar) || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeUser?.name || activeGroup?.name || 'G')}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full shadow-sm group-hover:ring-2 ring-primary-500 transition-all" alt="" />
                   <div className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 text-lg truncate group-hover:text-primary-600 transition-colors">{activeUser.name}</p>
-                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 truncate">{activeUser.role?.replace('_',' ')}</p>
+                  <p className="font-bold text-slate-900 text-lg truncate group-hover:text-primary-600 transition-colors">{activeUser?.name || activeGroup?.name}</p>
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-500 truncate">{activeGroup ? `${activeGroup.participants?.length || 0} members` : activeUser?.role?.replace('_',' ')}</p>
                 </div>
-                {['vendor','institution'].includes(activeUser.role) && (
+                {activeUser && ['vendor','institution'].includes(activeUser.role) && (
                   <div className="hidden sm:flex items-center gap-2 text-[10px] font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-lg border border-amber-200 uppercase tracking-widest shrink-0">
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
                     Platform Comms Only
@@ -205,8 +274,8 @@ export default function MessagingPage() {
                     <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} animate-fade-in`} style={{ animationDuration: '0.3s' }}>
                       <div className={`flex gap-3 max-w-[85%] lg:max-w-[70%] ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                         {!isMe && (
-                          <div className="w-8 flex-shrink-0 flex items-end">
-                            {showAvatar && <img src={activeUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(activeUser.name||'U')}&background=e2e8f0&color=475569&size=32`} className="w-8 h-8 rounded-full mb-1" alt="" />}
+                      <div className="w-8 flex-shrink-0 flex items-end">
+                            {showAvatar && <img src={msg.senderAvatar || activeUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(msg.senderName || activeUser?.name || 'U')}&background=e2e8f0&color=475569&size=32`} className="w-8 h-8 rounded-full mb-1" alt="" />}
                           </div>
                         )}
                         
@@ -216,6 +285,7 @@ export default function MessagingPage() {
                               ? 'bg-primary-600 text-white rounded-2xl rounded-br-sm' 
                               : 'bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-bl-sm'
                           }`}>
+                            {activeGroup && !isMe && msg.senderName ? <span className="mb-1 block text-[10px] font-bold uppercase opacity-70">{msg.senderName}</span> : null}
                             {msg.text}
                           </div>
                           <span className={`text-[10px] font-bold text-slate-400 mt-1 mx-1`}>
@@ -236,7 +306,7 @@ export default function MessagingPage() {
                     <form onSubmit={handleSend} className="flex gap-3 bg-white border border-slate-200 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500 transition-all">
                       <input
                         className="flex-1 bg-transparent px-4 py-2 outline-none text-slate-700"
-                        placeholder={`Message ${activeUser.name.split(' ')[0]}...`}
+                        placeholder={`Message ${(activeUser?.name || activeGroup?.name || 'conversation').split(' ')[0]}...`}
                         value={input}
                         onChange={e => setInput(e.target.value)}
                       />

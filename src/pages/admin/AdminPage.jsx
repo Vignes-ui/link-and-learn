@@ -1,408 +1,541 @@
-import { useState, useEffect } from 'react';
-import { getAllUsers, updateAccountStatus, updateCertificateStatus } from '../../api/profile';
+import { createElement, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  AlertCircle,
+  BadgeCheck,
+  BookOpenCheck,
+  Building2,
+  Check,
+  FileText,
+  GraduationCap,
+  Megaphone,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  UserCog,
+  Users,
+  X,
+} from 'lucide-react';
+import {
+  getAdminOverview,
+  getAdminUsers,
+  updateAdminCertificateStatus,
+  updateAdminUserStatus,
+} from '../../api/admin';
 import { updateArticleStatus } from '../../api/articles';
 import { getPendingAds, updateAdStatus } from '../../api/ads';
 import { apiFetch } from '../../api/http';
-import { Building2, GraduationCap, FileText, ShieldCheck, Sparkles, ScrollText, Bot, CheckCircle2, Megaphone } from 'lucide-react';
 
-const ADMIN_TABS = ['institutions', 'certificates', 'articles', 'ads'];
+const TABS = [
+  { key: 'overview', label: 'Overview', icon: ShieldCheck },
+  { key: 'users', label: 'Users', icon: Users },
+  { key: 'institutions', label: 'Institutions', icon: Building2 },
+  { key: 'certificates', label: 'Certificates', icon: GraduationCap },
+  { key: 'articles', label: 'Articles', icon: FileText },
+  { key: 'ads', label: 'Ads', icon: Megaphone },
+];
 
-export default function AdminPage() {
-  const [tab, setTab] = useState('institutions');
-  const [pendingInstitutions, setPendingInstitutions] = useState([]);
-  const [pendingCerts, setPendingCerts] = useState([]);
-  const [pendingArticles, setPendingArticles] = useState([]);
-  const [pendingAds, setPendingAds] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState('');
+const USER_STATUSES = ['active', 'pending', 'suspended', 'rejected'];
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const users = await getAllUsers();
-      setPendingInstitutions(users.filter(u => u.accountStatus === 'pending' && u.loginType === 'institutional'));
-      setPendingCerts(users.filter(u => (u.certificates || []).some(c => c.status === 'pending')).map(u => ({
-        ...u,
-        pendingCerts: (u.certificates || []).map((c, i) => ({ ...c, index: i })).filter(c => c.status === 'pending')
-      })));
-      const { articles } = await apiFetch('/api/articles?status=pending');
-      setPendingArticles(articles || []);
-      setPendingAds(await getPendingAds());
-    } finally { setLoading(false); }
-  };
+const roleLabel = (role = '') => role.replaceAll('_', ' ') || 'unknown';
 
-  useEffect(() => { load(); }, []);
+const formatDate = (value) => {
+  if (!value) return 'N/A';
+  return new Date(value).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+};
 
-  const handleInstitution = async (uid, status) => {
-    setMsg('');
-    await updateAccountStatus(uid, status);
-    setMsg(`Institution ${status}`);
-    setTimeout(() => setMsg(''), 3000);
-    load();
-  };
+const formatPercent = (value) => {
+  if (value === null || value === undefined || value === '') return 'N/A';
+  const numeric = Number(value);
+  if (Number.isNaN(numeric)) return 'N/A';
+  return `${Math.round(numeric * 100)}%`;
+};
 
-  const handleCert = async (uid, certIndex, status) => {
-    setMsg('');
-    await updateCertificateStatus(uid, certIndex, status);
-    setMsg(`Certificate ${status}`);
-    setTimeout(() => setMsg(''), 3000);
-    load();
-  };
-
-  const handleArticle = async (articleId, status, reason = '') => {
-    setMsg('');
-    await updateArticleStatus(articleId, status, reason);
-    setMsg(`Article ${status}`);
-    setTimeout(() => setMsg(''), 3000);
-    load();
-  };
-
-  const handleAd = async (adId, status, reason = '') => {
-    setMsg('');
-    await updateAdStatus(adId, status, reason);
-    setMsg(`Campaign ${status}`);
-    setTimeout(() => setMsg(''), 3000);
-    load();
-  };
-
-  const tabs = {
-    institutions: { label: 'Institutions', icon: <Building2 className="w-8 h-8" />, count: pendingInstitutions.length },
-    certificates: { label: 'Certificates', icon: <GraduationCap className="w-8 h-8" />, count: pendingCerts.length },
-    articles: { label: 'Articles', icon: <FileText className="w-8 h-8" />, count: pendingArticles.length },
-    ads: { label: 'Ads', icon: <Megaphone className="w-8 h-8" />, count: pendingAds.length },
+function StatusPill({ status }) {
+  const styles = {
+    active: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    approved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    published: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    verified: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    pending: 'bg-amber-50 text-amber-700 border-amber-200',
+    suspended: 'bg-orange-50 text-orange-700 border-orange-200',
+    rejected: 'bg-red-50 text-red-700 border-red-200',
+    flagged: 'bg-red-50 text-red-700 border-red-200',
+    paused: 'bg-slate-100 text-slate-700 border-slate-200',
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 lg:space-y-8 animate-fade-in pb-12">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 bg-gradient-to-r from-slate-900 to-slate-800 p-8 rounded-[2rem] shadow-xl text-white relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-64 h-64 bg-red-500 rounded-full blur-[80px] opacity-20 -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute left-0 bottom-0 w-64 h-64 bg-primary-500 rounded-full blur-[80px] opacity-20 translate-y-1/2 -translate-x-1/2" />
-        
-        <div className="relative z-10">
-          <h1 className="text-3xl sm:text-4xl font-display font-bold tracking-tight mb-2 flex items-center gap-3">
-            Admin Command Center <span className="bg-red-500 text-white text-xs px-2.5 py-1 rounded-md uppercase tracking-widest font-bold">Root</span>
-          </h1>
-          <p className="text-slate-300 font-medium">Review pending approvals and manage platform integrity.</p>
-        </div>
-        
-        <button 
-          onClick={load} 
-          disabled={loading} 
-          className="relative z-10 flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white px-5 py-2.5 rounded-xl text-sm font-bold transition-all border border-white/10 shadow-sm backdrop-blur-sm"
-        >
-          <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {loading ? 'Syncing...' : 'Sync Data'}
-        </button>
-      </div>
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold capitalize ${styles[status] || styles.paused}`}>
+      {status || 'unknown'}
+    </span>
+  );
+}
 
-      {msg && (
-        <div className="rounded-xl p-4 text-sm font-bold border flex items-center gap-3 shadow-sm bg-emerald-50 text-emerald-800 border-emerald-200 animate-slide-up">
-          <ShieldCheck className="w-6 h-6 text-emerald-600" />
-          {msg}
+function EmptyState({ icon: Icon, title, text }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center">
+      {createElement(Icon, { className: 'mx-auto mb-3 h-10 w-10 text-slate-300' })}
+      <p className="text-base font-bold text-slate-700">{title}</p>
+      <p className="mt-1 text-sm font-medium text-slate-500">{text}</p>
+    </div>
+  );
+}
+
+function ActionButton({ children, tone = 'primary', ...props }) {
+  const tones = {
+    primary: 'bg-slate-900 text-white hover:bg-slate-800 border-slate-900',
+    success: 'bg-emerald-600 text-white hover:bg-emerald-700 border-emerald-600',
+    danger: 'bg-white text-red-600 hover:bg-red-50 border-red-200',
+    subtle: 'bg-white text-slate-700 hover:bg-slate-50 border-slate-200',
+  };
+
+  return (
+    <button
+      {...props}
+      className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${tones[tone]} ${props.className || ''}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function AdminPage() {
+  const [tab, setTab] = useState('overview');
+  const [overview, setOverview] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [pendingArticles, setPendingArticles] = useState([]);
+  const [pendingAds, setPendingAds] = useState([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const pendingInstitutions = useMemo(
+    () => users.filter((user) => user.loginType === 'institutional' && user.accountStatus === 'pending'),
+    [users]
+  );
+
+  const pendingCertificates = useMemo(
+    () => users
+      .map((user) => ({
+        ...user,
+        pendingCertificates: (user.certificates || [])
+          .map((cert, index) => ({ ...cert, index }))
+          .filter((cert) => cert.status === 'pending'),
+      }))
+      .filter((user) => user.pendingCertificates.length > 0),
+    [users]
+  );
+
+  const filteredUsers = useMemo(() => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return users;
+    return users.filter((user) => (
+      user.name?.toLowerCase().includes(normalized)
+      || user.email?.toLowerCase().includes(normalized)
+      || user.role?.toLowerCase().includes(normalized)
+      || user.accountStatus?.toLowerCase().includes(normalized)
+    ));
+  }, [query, users]);
+
+  const counts = {
+    overview: overview?.totals?.users || users.length,
+    users: users.length,
+    institutions: pendingInstitutions.length,
+    certificates: pendingCertificates.reduce((total, user) => total + user.pendingCertificates.length, 0),
+    articles: pendingArticles.length,
+    ads: pendingAds.length,
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [overviewData, adminUsers, articleData, ads] = await Promise.all([
+        getAdminOverview(),
+        getAdminUsers(),
+        apiFetch('/api/articles?status=pending'),
+        getPendingAds(),
+      ]);
+      setOverview(overviewData);
+      setUsers(adminUsers);
+      setPendingArticles(articleData.articles || []);
+      setPendingAds(ads);
+    } catch (err) {
+      setError(err.message || 'Unable to load admin portal data.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      load();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [load]);
+
+  const flash = (text) => {
+    setMessage(text);
+    setTimeout(() => setMessage(''), 3200);
+  };
+
+  const runAction = async (fn, successMessage) => {
+    setError('');
+    try {
+      await fn();
+      flash(successMessage);
+      await load();
+    } catch (err) {
+      setError(err.message || 'Action failed.');
+    }
+  };
+
+  const metricCards = [
+    { label: 'Total users', value: overview?.totals?.users || 0, icon: Users },
+    { label: 'Pending institutions', value: overview?.totals?.pendingInstitutions || 0, icon: Building2 },
+    { label: 'Pending articles', value: overview?.totals?.pendingArticles || 0, icon: FileText },
+    { label: 'Pending ads', value: overview?.totals?.pendingAds || 0, icon: Megaphone },
+    { label: 'Published articles', value: overview?.totals?.publishedArticles || 0, icon: BookOpenCheck },
+    { label: 'Active campaigns', value: overview?.totals?.activeCampaigns || 0, icon: BadgeCheck },
+    { label: 'Event registrations', value: overview?.totals?.eventRegistrations || 0, icon: Users },
+    { label: 'Applications', value: overview?.totals?.applications || 0, icon: FileText },
+    { label: 'Vendor quotes', value: overview?.totals?.vendorQuotes || 0, icon: Building2 },
+    { label: 'Endorsements', value: overview?.totals?.endorsements || 0, icon: ShieldCheck },
+  ];
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6 pb-12">
+      <section className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-xl md:p-8">
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-wider text-slate-200">
+              <ShieldCheck className="h-4 w-4" />
+              Admin Portal
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">Platform operations</h1>
+            <p className="mt-2 max-w-2xl text-sm font-medium text-slate-300 md:text-base">
+              Manage users, institution approvals, certificate verification, article review, and campaign moderation.
+            </p>
+          </div>
+          <ActionButton onClick={load} disabled={loading} className="border-white/20 bg-white/10 text-white hover:bg-white/20">
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Refreshing' : 'Refresh'}
+          </ActionButton>
+        </div>
+      </section>
+
+      {(message || error) && (
+        <div className={`flex items-start gap-3 rounded-2xl border p-4 text-sm font-bold shadow-sm ${error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+          {error ? <AlertCircle className="h-5 w-5 shrink-0" /> : <ShieldCheck className="h-5 w-5 shrink-0" />}
+          <span>{error || message}</span>
         </div>
       )}
 
-      {/* Stats Navigation */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
-        {Object.entries(tabs).map(([key, { label, icon, count }]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`glass-panel rounded-[2rem] p-6 text-left transition-all duration-300 border relative overflow-hidden group ${
-              tab === key 
-                ? 'bg-white shadow-xl border-primary-200 ring-2 ring-primary-500 ring-offset-2' 
-                : 'border-white/60 hover:shadow-lg hover:-translate-y-1'
-            }`}
-          >
-            <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-[40px] -z-10 transition-opacity ${
-              tab === key ? 'bg-primary-100 opacity-100' : 'bg-slate-100 opacity-0 group-hover:opacity-50'
-            }`} />
-            
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-2xl mb-3 block">{icon}</span>
-                <p className={`text-sm font-bold uppercase tracking-widest ${tab === key ? 'text-primary-600' : 'text-slate-500'}`}>{label}</p>
+      <nav className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {TABS.map(({ key, label, icon: Icon }) => {
+          const active = tab === key;
+          const needsAction = ['institutions', 'certificates', 'articles', 'ads'].includes(key) && counts[key] > 0;
+          return (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`rounded-2xl border p-4 text-left transition-all ${active ? 'border-primary-300 bg-white shadow-md ring-2 ring-primary-500/20' : 'border-slate-200 bg-white/70 hover:border-slate-300 hover:bg-white'}`}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                {createElement(Icon, { className: `h-5 w-5 ${active ? 'text-primary-600' : 'text-slate-500'}` })}
+                <span className={`text-lg font-bold ${needsAction ? 'text-red-600' : 'text-slate-900'}`}>{counts[key]}</span>
               </div>
-              <div className={`text-3xl font-display font-bold ${
-                count > 0 
-                  ? 'text-red-500' 
-                  : tab === key ? 'text-slate-900' : 'text-slate-400'
-              }`}>
-                {count}
+              <p className={`text-sm font-bold ${active ? 'text-slate-950' : 'text-slate-600'}`}>{label}</p>
+            </button>
+          );
+        })}
+      </nav>
+
+      {tab === 'overview' && (
+        <section className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {metricCards.map(({ label, value, icon: Icon }) => (
+              <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="mb-4 flex items-center justify-between">
+                  {createElement(Icon, { className: 'h-6 w-6 text-slate-500' })}
+                  <span className="text-3xl font-bold text-slate-950">{value}</span>
+                </div>
+                <p className="text-sm font-bold uppercase tracking-wider text-slate-500">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-bold text-slate-950">Users by role</h2>
+              <div className="space-y-3">
+                {(overview?.usersByRole || []).map((item) => (
+                  <div key={item.role} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                    <span className="text-sm font-bold capitalize text-slate-700">{roleLabel(item.role)}</span>
+                    <span className="text-sm font-bold text-slate-950">{item.total}</span>
+                  </div>
+                ))}
               </div>
             </div>
-            {count > 0 && (
-              <div className="mt-4">
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded-md border border-red-100 uppercase tracking-wider">
-                  Action Required
-                </span>
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-
-      <div className="glass-panel rounded-[2rem] shadow-sm border border-white/60 overflow-hidden relative min-h-[400px]">
-        {/* Institutions */}
-        {tab === 'institutions' && (
-          <div className="p-8 animate-fade-in">
-            <h2 className="font-display font-bold text-2xl text-slate-900 mb-6 flex items-center gap-3">
-              <span className="bg-slate-100 w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-200"><Building2 className="w-5 h-5 text-slate-600" /></span>
-              Pending Institutions
-            </h2>
-            
-            {pendingInstitutions.length === 0 ? (
-              <div className="text-center py-16 bg-white/40 rounded-3xl border border-slate-200 border-dashed">
-                <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-lg font-bold text-slate-600">All caught up!</p>
-                <p className="text-slate-500 font-medium mt-1">No pending institution registrations.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {pendingInstitutions.map(inst => (
-                  <div key={inst.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <p className="font-bold text-xl text-slate-900">{inst.name}</p>
-                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded uppercase tracking-widest border border-amber-200">Pending</span>
-                      </div>
-                      <p className="text-sm font-medium text-slate-500 mb-3">{inst.email}</p>
-                      
-                      <div className="flex flex-wrap gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
-                        <span className="bg-slate-50 px-2 py-1 rounded border border-slate-100">Type: {inst.role?.replace('_',' ')}</span>
-                        <span className="bg-slate-50 px-2 py-1 rounded border border-slate-100">Applied: {inst.createdAt ? new Date(inst.createdAt).toLocaleDateString() : 'N/A'}</span>
-                      </div>
-                      
-                      {inst.bio && (
-                        <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 mt-2">
-                          <p className="text-sm text-slate-600 leading-relaxed font-serif italic">"{inst.bio}"</p>
-                        </div>
-                      )}
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-bold text-slate-950">Recent users</h2>
+              <div className="space-y-3">
+                {(overview?.recentUsers || []).map((user) => (
+                  <div key={user.id} className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-slate-900">{user.name || user.email}</p>
+                      <p className="text-xs font-medium capitalize text-slate-500">{roleLabel(user.role)} joined {formatDate(user.createdAt)}</p>
                     </div>
-                    <div className="flex flex-row md:flex-col gap-3 shrink-0">
-                      <button onClick={() => handleInstitution(inst.id, 'active')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 shadow-sm transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                        Approve
-                      </button>
-                      <button onClick={() => handleInstitution(inst.id, 'rejected')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-red-600 border border-red-200 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-red-50 shadow-sm transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                        Reject
-                      </button>
-                    </div>
+                    <StatusPill status={user.accountStatus} />
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Certificates */}
-        {tab === 'certificates' && (
-          <div className="p-8 animate-fade-in">
-            <h2 className="font-display font-bold text-2xl text-slate-900 mb-6 flex items-center gap-3">
-              <span className="bg-slate-100 w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-200"><GraduationCap className="w-5 h-5 text-slate-600" /></span>
-              Pending Certificates
-            </h2>
-            
-            {pendingCerts.length === 0 ? (
-              <div className="text-center py-16 bg-white/40 rounded-3xl border border-slate-200 border-dashed">
-                <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-lg font-bold text-slate-600">All caught up!</p>
-                <p className="text-slate-500 font-medium mt-1">No pending degree verifications.</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-bold text-slate-950">Ad performance</h2>
+              <div className="space-y-3">
+                {(overview?.adsByStatus || []).map((item) => (
+                  <div key={item.status} className="grid grid-cols-4 items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 text-sm">
+                    <span className="font-bold capitalize text-slate-700">{item.status}</span>
+                    <span className="font-bold text-slate-950">{item.total} ads</span>
+                    <span className="font-medium text-slate-600">{item.impressions} views</span>
+                    <span className="font-medium text-slate-600">{item.ctr}% CTR</span>
+                  </div>
+                ))}
+                {(overview?.adsByStatus || []).length === 0 && <p className="text-sm font-medium text-slate-500">No campaigns yet.</p>}
               </div>
-            ) : (
-              <div className="space-y-6">
-                {pendingCerts.map(user => (
-                  <div key={user.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                    <div className="flex items-center gap-4 mb-4 pb-4 border-b border-slate-100">
-                      <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=e2e8f0&color=475569&size=48`} className="w-12 h-12 rounded-full" alt="" />
-                      <div>
-                        <p className="font-bold text-lg text-slate-900">{user.name}</p>
-                        <p className="text-sm font-medium text-slate-500">{user.email}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      {user.pendingCerts.map((cert) => (
-                        <div key={cert.index} className="bg-slate-50 border border-slate-200 rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-5">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <ScrollText className="w-5 h-5 text-slate-600" />
-                              <p className="font-bold text-slate-900">{cert.degree}</p>
-                            </div>
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-2 mb-1">Document Info</p>
-                            <p className="text-sm font-medium text-slate-600 font-mono bg-white inline-block px-2 py-1 rounded border border-slate-200">{cert.fileName}</p>
-                            <p className="text-xs text-slate-400 mt-2">Uploaded: {new Date(cert.uploadedAt).toLocaleDateString()}</p>
-                          </div>
-                          
-                          <div className="flex flex-col gap-3 shrink-0">
-                            <a 
-                              href={cert.fileUrl} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              className="flex items-center justify-center gap-2 bg-blue-50 text-blue-700 border border-blue-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-100 transition-colors"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
-                              Review Document
-                            </a>
-                            <div className="flex gap-2">
-                              <button onClick={() => handleCert(user.id, cert.index, 'verified')} className="flex-1 flex items-center justify-center bg-emerald-600 text-white px-3 py-2 rounded-lg text-sm font-bold hover:bg-emerald-700 shadow-sm transition-colors">
-                                Verify
-                              </button>
-                              <button onClick={() => handleCert(user.id, cert.index, 'rejected')} className="flex-1 flex items-center justify-center bg-white text-red-600 border border-red-200 px-3 py-2 rounded-lg text-sm font-bold hover:bg-red-50 shadow-sm transition-colors">
-                                Reject
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <h2 className="mb-4 text-xl font-bold text-slate-950">Daily signups</h2>
+              <div className="space-y-2">
+                {(overview?.dailyUsers || []).map((item) => (
+                  <div key={item.day} className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                    <span className="text-sm font-bold text-slate-700">{item.day}</span>
+                    <span className="text-sm font-bold text-slate-950">{item.total}</span>
                   </div>
                 ))}
               </div>
-            )}
+            </div>
           </div>
-        )}
+        </section>
+      )}
 
-        {/* Articles */}
-        {tab === 'articles' && (
-          <div className="p-8 animate-fade-in">
-            <h2 className="font-display font-bold text-2xl text-slate-900 mb-6 flex items-center gap-3">
-              <span className="bg-slate-100 w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-200"><FileText className="w-5 h-5 text-slate-600" /></span>
-              Pending Articles
-            </h2>
-            
-            {pendingArticles.length === 0 ? (
-              <div className="text-center py-16 bg-white/40 rounded-3xl border border-slate-200 border-dashed">
-                <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-lg font-bold text-slate-600">All caught up!</p>
-                <p className="text-slate-500 font-medium mt-1">No articles pending review.</p>
+      {tab === 'users' && (
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-6">
+          <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-2xl font-bold text-slate-950">User management</h2>
+              <p className="mt-1 text-sm font-medium text-slate-500">Search accounts and update access status.</p>
+            </div>
+            <label className="relative block w-full md:w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search users"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm font-medium outline-none focus:border-primary-400 focus:bg-white focus:ring-2 focus:ring-primary-100"
+              />
+            </label>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200">
+            <div className="hidden grid-cols-[1.5fr_1fr_1fr_1fr] gap-4 bg-slate-50 px-5 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 md:grid">
+              <span>User</span>
+              <span>Role</span>
+              <span>Status</span>
+              <span>Update</span>
+            </div>
+            <div className="divide-y divide-slate-200">
+              {filteredUsers.map((user) => (
+                <div key={user.id} className="grid gap-4 px-5 py-4 md:grid-cols-[1.5fr_1fr_1fr_1fr] md:items-center">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">{user.name || 'Unnamed account'}</p>
+                    <p className="truncate text-xs font-medium text-slate-500">{user.email}</p>
+                  </div>
+                  <p className="text-sm font-bold capitalize text-slate-700">{roleLabel(user.role)}</p>
+                  <StatusPill status={user.accountStatus} />
+                  <select
+                    value={user.accountStatus}
+                    onChange={(event) => runAction(
+                      () => updateAdminUserStatus(user.id, event.target.value),
+                      `${user.name || user.email} marked ${event.target.value}`
+                    )}
+                    className="min-h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold capitalize text-slate-700 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+                  >
+                    {USER_STATUSES.map((status) => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              {filteredUsers.length === 0 && (
+                <div className="p-6">
+                  <EmptyState icon={UserCog} title="No users found" text="Adjust the search query to view accounts." />
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {tab === 'institutions' && (
+        <section className="space-y-4">
+          {pendingInstitutions.length === 0 ? (
+            <EmptyState icon={Building2} title="No pending institutions" text="Institutional account requests are clear." />
+          ) : pendingInstitutions.map((institution) => (
+            <div key={institution.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-bold text-slate-950">{institution.name}</h2>
+                    <StatusPill status={institution.accountStatus} />
+                  </div>
+                  <p className="text-sm font-medium text-slate-500">{institution.email}</p>
+                  <p className="mt-3 text-sm font-bold capitalize text-slate-700">{roleLabel(institution.role)} account requested {formatDate(institution.createdAt)}</p>
+                  {institution.bio && <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600">{institution.bio}</p>}
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row md:flex-col">
+                  <ActionButton tone="success" onClick={() => runAction(() => updateAdminUserStatus(institution.id, 'active'), `${institution.name} approved`)}>
+                    <Check className="h-4 w-4" />
+                    Approve
+                  </ActionButton>
+                  <ActionButton tone="danger" onClick={() => runAction(() => updateAdminUserStatus(institution.id, 'rejected'), `${institution.name} rejected`)}>
+                    <X className="h-4 w-4" />
+                    Reject
+                  </ActionButton>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {pendingArticles.map(article => (
-                  <div key={article.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-2">
-                          <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase tracking-widest border border-indigo-200">{article.category}</span>
-                          <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded uppercase tracking-widest border border-amber-200">Pending Review</span>
-                        </div>
-                        
-                        <p className="font-bold text-xl text-slate-900 mb-1">{article.title}</p>
-                        <p className="text-sm font-medium text-slate-500 mb-4 flex items-center gap-2">
-                          <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(article.authorName)}&background=e2e8f0&color=475569&size=20`} className="w-5 h-5 rounded-full" alt="" />
-                          {article.authorName}
-                        </p>
-                        
-                        {article.aiScore !== null && (
-                          <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 flex flex-wrap items-center gap-4 mb-4">
-                            <div className="flex items-center gap-2">
-                              <Bot className="w-6 h-6 text-slate-400" />
-                              <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">AI Content Score</p>
-                                <p className={`text-sm font-bold ${(article.aiScore * 100) > 70 ? 'text-red-600' : 'text-emerald-600'}`}>
-                                  {(article.aiScore * 100).toFixed(0)}% Match
-                                </p>
-                              </div>
-                            </div>
-                            {article.aiCategory && (
-                              <div className="h-8 w-px bg-slate-200"></div>
-                            )}
-                            {article.aiCategory && (
-                              <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Classification</p>
-                                <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{article.aiCategory}</span>
-                              </div>
-                            )}
-                            {article.plagiarismScore !== null && (
-                              <>
-                                <div className="h-8 w-px bg-slate-200"></div>
-                                <div>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plagiarism Risk</p>
-                                  <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{Math.round(article.plagiarismScore * 100)}%</span>
-                                </div>
-                              </>
-                            )}
-                            {article.fakeProfileScore !== null && (
-                              <>
-                                <div className="h-8 w-px bg-slate-200"></div>
-                                <div>
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Profile Risk</p>
-                                  <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{Math.round(article.fakeProfileScore * 100)}%</span>
-                                </div>
-                              </>
-                            )}
-                          </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {tab === 'certificates' && (
+        <section className="space-y-4">
+          {pendingCertificates.length === 0 ? (
+            <EmptyState icon={GraduationCap} title="No pending certificates" text="Degree and document verification requests are clear." />
+          ) : pendingCertificates.map((user) => (
+            <div key={user.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <h2 className="truncate text-xl font-bold text-slate-950">{user.name}</h2>
+                  <p className="truncate text-sm font-medium text-slate-500">{user.email}</p>
+                </div>
+                <StatusPill status={user.accountStatus} />
+              </div>
+              <div className="space-y-3">
+                {user.pendingCertificates.map((certificate) => (
+                  <div key={certificate.index} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="min-w-0">
+                        <p className="font-bold text-slate-950">{certificate.degree || 'Certificate'}</p>
+                        <p className="mt-1 truncate text-sm font-medium text-slate-500">{certificate.fileName || 'Uploaded document'}</p>
+                        <p className="mt-1 text-xs font-bold uppercase tracking-wider text-slate-400">Uploaded {formatDate(certificate.uploadedAt)}</p>
+                      </div>
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        {certificate.fileUrl && (
+                          <ActionButton tone="subtle" onClick={() => window.open(certificate.fileUrl, '_blank', 'noreferrer')}>
+                            Review
+                          </ActionButton>
                         )}
-                        
-                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                          <p className="text-sm text-slate-600 leading-relaxed font-serif line-clamp-3">"{article.content}"</p>
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-row md:flex-col gap-3 shrink-0">
-                        <button onClick={() => handleArticle(article.id, 'published')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 shadow-sm transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-                          Publish
-                        </button>
-                        <button onClick={() => handleArticle(article.id, 'rejected', 'Content policy violation')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-red-600 border border-red-200 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-red-50 shadow-sm transition-colors">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                        <ActionButton tone="success" onClick={() => runAction(() => updateAdminCertificateStatus(user.id, certificate.index, 'verified'), 'Certificate verified')}>
+                          Verify
+                        </ActionButton>
+                        <ActionButton tone="danger" onClick={() => runAction(() => updateAdminCertificateStatus(user.id, certificate.index, 'rejected'), 'Certificate rejected')}>
                           Reject
-                        </button>
+                        </ActionButton>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          ))}
+        </section>
+      )}
 
-        {tab === 'ads' && (
-          <div className="p-8 animate-fade-in">
-            <h2 className="font-display font-bold text-2xl text-slate-900 mb-6 flex items-center gap-3">
-              <span className="bg-slate-100 w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-200"><Megaphone className="w-5 h-5 text-slate-600" /></span>
-              Pending Campaigns
-            </h2>
-
-            {pendingAds.length === 0 ? (
-              <div className="text-center py-16 bg-white/40 rounded-3xl border border-slate-200 border-dashed">
-                <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <p className="text-lg font-bold text-slate-600">All caught up!</p>
-                <p className="text-slate-500 font-medium mt-1">No campaigns pending approval.</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {pendingAds.map((ad) => (
-                  <div key={ad.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded uppercase tracking-widest border border-amber-200">{ad.placement}</span>
-                        <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase tracking-widest border border-blue-200">{ad.advertiserRole}</span>
-                      </div>
-                      <p className="font-bold text-xl text-slate-900">{ad.title}</p>
-                      <p className="text-sm text-slate-500 mb-3">{ad.advertiserName}</p>
-                      <p className="text-slate-600 leading-relaxed">{ad.description}</p>
+      {tab === 'articles' && (
+        <section className="space-y-4">
+          {pendingArticles.length === 0 ? (
+            <EmptyState icon={FileText} title="No pending articles" text="Article review queue is clear." />
+          ) : pendingArticles.map((article) => (
+            <div key={article.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <StatusPill status={article.status} />
+                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700">{article.category || 'General'}</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-950">{article.title}</h2>
+                  <p className="mt-1 text-sm font-medium text-slate-500">By {article.authorName} on {formatDate(article.createdAt)}</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">AI score</p>
+                      <p className="mt-1 font-bold text-slate-900">{formatPercent(article.aiScore)}</p>
                     </div>
-
-                    <div className="flex flex-row md:flex-col gap-3 shrink-0">
-                      <button onClick={() => handleAd(ad.id, 'approved')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 shadow-sm transition-colors">
-                        Approve
-                      </button>
-                      <button onClick={() => handleAd(ad.id, 'rejected', 'Campaign rejected during moderation review')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-red-600 border border-red-200 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-red-50 shadow-sm transition-colors">
-                        Reject
-                      </button>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Plagiarism</p>
+                      <p className="mt-1 font-bold text-slate-900">{formatPercent(article.plagiarismScore)}</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Profile risk</p>
+                      <p className="mt-1 font-bold text-slate-900">{formatPercent(article.fakeProfileScore)}</p>
                     </div>
                   </div>
-                ))}
+                  <p className="mt-4 line-clamp-4 text-sm leading-6 text-slate-600">{article.content}</p>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+                  <ActionButton tone="success" onClick={() => runAction(() => updateArticleStatus(article.id, 'published'), 'Article published')}>
+                    Publish
+                  </ActionButton>
+                  <ActionButton tone="danger" onClick={() => runAction(() => updateArticleStatus(article.id, 'rejected', 'Rejected during moderation review'), 'Article rejected')}>
+                    Reject
+                  </ActionButton>
+                </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {tab === 'ads' && (
+        <section className="space-y-4">
+          {pendingAds.length === 0 ? (
+            <EmptyState icon={Megaphone} title="No pending ads" text="Campaign moderation queue is clear." />
+          ) : pendingAds.map((ad) => (
+            <div key={ad.id} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+                <div className="min-w-0">
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <StatusPill status={ad.status} />
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold capitalize text-blue-700">{ad.placement}</span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold capitalize text-slate-600">{roleLabel(ad.advertiserRole)}</span>
+                  </div>
+                  <h2 className="text-xl font-bold text-slate-950">{ad.title}</h2>
+                  <p className="mt-1 text-sm font-medium text-slate-500">By {ad.advertiserName} on {formatDate(ad.createdAt)}</p>
+                  <p className="mt-4 max-w-3xl text-sm leading-6 text-slate-600">{ad.description}</p>
+                  <div className="mt-4 flex flex-wrap gap-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+                    <span className="rounded-lg bg-slate-50 px-3 py-2">Budget: {ad.budget || 'N/A'}</span>
+                    <span className="rounded-lg bg-slate-50 px-3 py-2">Audience: {(ad.targetAudience || []).join(', ') || 'All'}</span>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 sm:flex-row md:flex-col">
+                  <ActionButton tone="success" onClick={() => runAction(() => updateAdStatus(ad.id, 'approved'), 'Campaign approved')}>
+                    Approve
+                  </ActionButton>
+                  <ActionButton tone="danger" onClick={() => runAction(() => updateAdStatus(ad.id, 'rejected', 'Rejected during moderation review'), 'Campaign rejected')}>
+                    Reject
+                  </ActionButton>
+                </div>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

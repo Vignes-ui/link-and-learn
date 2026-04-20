@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { postRequirement, subscribeRequirements, submitQuote, getMyRequirements, awardQuote } from '../../api/vendor';
+import { postRequirement, subscribeRequirements, submitQuote, getMyRequirements, awardQuote, upsertVendorCatalogue, getVendors } from '../../api/vendor';
 import { ShoppingCart, CheckCircle2, AlertTriangle, FileText, Factory, Clock, MapPin, IndianRupee, Send, Edit, Package, Hash, Box, SendHorizonal, ClipboardList, Inbox, BoxSelect } from 'lucide-react';
 
 const ITEM_TYPES = ['Furniture', 'Lab Equipment', 'IT Infrastructure', 'Office Supplies', 'Maintenance', 'Consumables', 'Construction', 'Other'];
@@ -20,14 +20,27 @@ export default function VendorPage() {
   const [quote, setQuote] = useState({ price: '', timeline: '', terms: '' });
   const [quoting, setQuoting] = useState(false);
   const [quoteMsg, setQuoteMsg] = useState('');
+  const [vendors, setVendors] = useState([]);
+  const [catalogueText, setCatalogueText] = useState('');
+  const [catalogueMsg, setCatalogueMsg] = useState('');
 
   const isInstitution = CAN_POST_REQ.includes(userData?.role);
   const isVendor = userData?.role === 'vendor';
 
   useEffect(() => {
     const unsub = subscribeRequirements(setRequirements);
+    getVendors().then(setVendors).catch(() => {});
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (isVendor) {
+      const timer = setTimeout(() => {
+        setCatalogueText((userData?.catalogue || []).map((item) => `${item.name || ''} | ${item.category || ''} | ${item.price || ''} | ${item.description || ''}`).join('\n'));
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [isVendor, userData]);
 
   useEffect(() => {
     if (view === 'mine' && isInstitution) {
@@ -55,6 +68,17 @@ export default function VendorPage() {
       setQuote({ price: '', timeline: '', terms: '' });
     } catch (e) { setQuoteMsg('❌ ' + e.message); }
     finally { setQuoting(false); }
+  };
+
+  const saveCatalogue = async () => {
+    const catalogue = catalogueText.split('\n').map((line) => {
+      const [name = '', category = '', price = '', description = ''] = line.split('|').map((part) => part.trim());
+      return { name, category, price, description };
+    }).filter((item) => item.name);
+    await upsertVendorCatalogue(currentUser.uid, catalogue);
+    setCatalogueMsg('Catalogue saved');
+    setTimeout(() => setCatalogueMsg(''), 2500);
+    getVendors().then(setVendors).catch(() => {});
   };
 
   if (selected) {
@@ -287,6 +311,20 @@ export default function VendorPage() {
               My Requirements
             </button>
           )}
+          <button 
+            onClick={() => setView('vendors')} 
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${view === 'vendors' ? 'bg-white text-slate-900 shadow-md' : 'text-white hover:bg-white/20'}`}
+          >
+            Vendor Directory
+          </button>
+          {isVendor && (
+            <button 
+              onClick={() => setView('catalogue')} 
+              className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${view === 'catalogue' ? 'bg-white text-slate-900 shadow-md' : 'text-white hover:bg-white/20'}`}
+            >
+              My Catalogue
+            </button>
+          )}
         </div>
       </div>
 
@@ -466,6 +504,57 @@ export default function VendorPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {view === 'vendors' && (
+        <div className="grid gap-5 md:grid-cols-2 animate-slide-up">
+          {vendors.length === 0 ? (
+            <div className="md:col-span-2 text-center py-20 glass-panel rounded-[2rem] border border-white/60">
+              <Factory className="w-10 h-10 text-slate-400 mx-auto mb-4" />
+              <p className="text-lg font-bold text-slate-700">No approved vendors yet.</p>
+            </div>
+          ) : vendors.map((vendor) => (
+            <div key={vendor.id} className="glass-panel rounded-2xl p-6 border border-white/60 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{vendor.name}</h3>
+                  <p className="text-sm font-medium text-slate-500">{vendor.email}</p>
+                  {vendor.bio && <p className="mt-3 text-sm leading-6 text-slate-600">{vendor.bio}</p>}
+                </div>
+                {vendor.verifiedBadge && <CheckCircle2 className="w-6 h-6 text-emerald-500" />}
+              </div>
+              <div className="mt-5 space-y-3">
+                {(vendor.catalogue || []).length === 0 ? (
+                  <p className="text-sm font-medium text-slate-400">No catalogue items listed.</p>
+                ) : vendor.catalogue.map((item, index) => (
+                  <div key={`${vendor.id}-${index}`} className="rounded-xl bg-white p-4 border border-slate-100">
+                    <p className="font-bold text-slate-900">{item.name}</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-600">{item.category} {item.price ? `- Rs. ${item.price}` : ''}</p>
+                    {item.description && <p className="mt-2 text-sm text-slate-600">{item.description}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {view === 'catalogue' && isVendor && (
+        <div className="max-w-3xl mx-auto glass-panel rounded-[2rem] p-8 border border-white/60 shadow-sm animate-slide-up">
+          <h2 className="text-2xl font-display font-bold text-slate-900 mb-3">Product & Service Catalogue</h2>
+          <p className="text-sm font-medium text-slate-500 mb-5">Enter one item per line: name | category | price | description</p>
+          {catalogueMsg && <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm font-bold text-emerald-700">{catalogueMsg}</div>}
+          <textarea
+            className="w-full rounded-2xl border border-slate-200 bg-white p-4 font-mono text-sm outline-none focus:ring-2 focus:ring-primary-500"
+            rows={10}
+            value={catalogueText}
+            onChange={(e) => setCatalogueText(e.target.value)}
+            placeholder="Lab Microscope | Lab Equipment | 25000 | Binocular microscope with installation"
+          />
+          <button onClick={saveCatalogue} className="mt-5 rounded-xl bg-primary-600 px-6 py-3 text-sm font-bold text-white hover:bg-primary-700">
+            Save Catalogue
+          </button>
         </div>
       )}
 

@@ -19,8 +19,30 @@ export default function ArticlesPage() {
   const [tags, setTags] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [msg, setMsg] = useState('');
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('All');
 
   const canPublish = ['researcher', 'institution', 'govt_body', 'ngo', 'admin'].includes(userData?.role);
+  const filteredArticles = articles.filter((article) => {
+    const q = search.trim().toLowerCase();
+    const matchesText = !q
+      || article.title?.toLowerCase().includes(q)
+      || article.content?.toLowerCase().includes(q)
+      || article.authorName?.toLowerCase().includes(q)
+      || (article.tags || []).some((tag) => tag.toLowerCase().includes(q));
+    const matchesCategory = categoryFilter === 'All' || article.category === categoryFilter;
+    return matchesText && matchesCategory;
+  });
+
+  const wrapSelection = (before, after = before) => {
+    const textarea = document.getElementById('article-content-editor');
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = content.slice(start, end) || 'text';
+    setContent(`${content.slice(0, start)}${before}${selectedText}${after}${content.slice(end)}`);
+    setTimeout(() => textarea.focus(), 0);
+  };
 
   useEffect(() => {
     const unsub = subscribeArticles(setArticles);
@@ -156,17 +178,36 @@ export default function ArticlesPage() {
       {/* Browse */}
       {view === 'browse' && (
         <div className="space-y-6 animate-slide-up">
-          {articles.length === 0 && (
+          <div className="glass-panel rounded-2xl border border-white/60 p-4 shadow-sm">
+            <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+              <input
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-primary-500"
+                placeholder="Search articles, tags, authors"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <select
+                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary-500"
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="All">All categories</option>
+                {CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {filteredArticles.length === 0 && (
             <div className="text-center py-24 glass-panel rounded-[2rem] border border-white/60">
               <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 border border-slate-200 shadow-inner">
                 <FileText className="w-10 h-10 text-slate-400" />
               </div>
-              <h3 className="text-xl font-display font-bold text-slate-900 mb-2">No articles published</h3>
-              <p className="text-slate-500 font-medium">Be the first to share your research with the community!</p>
+              <h3 className="text-xl font-display font-bold text-slate-900 mb-2">No articles found</h3>
+              <p className="text-slate-500 font-medium">Try another search or category.</p>
             </div>
           )}
           <div className="grid md:grid-cols-2 gap-6">
-            {articles.map((article, idx) => (
+            {filteredArticles.map((article, idx) => (
               <div 
                 key={article.id} 
                 className="glass-panel rounded-[2rem] p-6 sm:p-8 hover:-translate-y-1.5 hover:shadow-xl transition-all duration-300 cursor-pointer border border-white/60 group relative overflow-hidden flex flex-col"
@@ -266,7 +307,15 @@ export default function ArticlesPage() {
             
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Article Content</label>
+              <div className="flex flex-wrap gap-2 rounded-xl border border-slate-200 bg-white p-2">
+                <button type="button" onClick={() => wrapSelection('**')} className="rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-slate-100">B</button>
+                <button type="button" onClick={() => wrapSelection('_')} className="rounded-lg px-3 py-1.5 text-sm italic hover:bg-slate-100">I</button>
+                <button type="button" onClick={() => wrapSelection('## ', '')} className="rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-slate-100">H2</button>
+                <button type="button" onClick={() => wrapSelection('- ', '')} className="rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-slate-100">List</button>
+                <button type="button" onClick={() => wrapSelection('[', '](https://)')} className="rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-slate-100">Link</button>
+              </div>
               <textarea
+                id="article-content-editor"
                 className="w-full bg-white border border-slate-200 p-5 rounded-xl resize-none font-serif leading-relaxed focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all text-lg"
                 rows={14}
                 placeholder="Write your article content here... (Markdown support coming soon)"

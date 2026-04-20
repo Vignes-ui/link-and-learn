@@ -3,6 +3,8 @@ import { getMe, logoutUser } from '../api/auth';
 
 const AuthContext = createContext();
 
+// Auth context and hook live together so route guards can consume the same provider instance.
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => useContext(AuthContext);
 
 export const AuthProvider = ({ children }) => {

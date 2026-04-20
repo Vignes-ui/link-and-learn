@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getNotifications, markAsRead, markAllAsRead, subscribeNotifications } from '../../api/notifications';
 import { Bell, CheckCircle2, Heart, MessageCircle, UserPlus, Clock, ArrowRight, Briefcase, CalendarDays, ShoppingCart } from 'lucide-react';
@@ -6,15 +6,10 @@ import { Bell, CheckCircle2, Heart, MessageCircle, UserPlus, Clock, ArrowRight, 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(() => Date.now());
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchNotifications();
-    const unsub = subscribeNotifications(setNotifications);
-    return () => unsub();
-  }, []);
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     try {
       const data = await getNotifications();
       setNotifications(data.notifications);
@@ -23,7 +18,18 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => fetchNotifications(), 0);
+    const unsub = subscribeNotifications(setNotifications);
+    return () => { clearTimeout(timer); unsub(); };
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const handleMarkAllRead = async () => {
     await markAllAsRead();
@@ -53,7 +59,7 @@ export default function NotificationsPage() {
 
   const timeAgo = (dateStr) => {
     const d = new Date(dateStr);
-    const secs = Math.floor((Date.now() - d) / 1000);
+    const secs = Math.floor((now - d) / 1000);
     if (secs < 60) return 'just now';
     if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
     if (secs < 84600) return Math.floor(secs / 3600) + 'h ago';

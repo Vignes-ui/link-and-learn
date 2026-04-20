@@ -11,7 +11,7 @@ export const subscribeVacancies = (callback) => {
   }, 5000);
 };
 
-export const applyForVacancy = async (vacancyId, _applicantIgnored) => {
+export const applyForVacancy = async (vacancyId) => {
   return apiFetch(`/api/vacancies/${vacancyId}/apply`, { method: 'POST' });
 };
 

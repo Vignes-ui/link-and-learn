@@ -46,7 +46,10 @@ final class Auth {
   public static function signup(string $email, string $password, string $role, string $name): void {
     if ($email === '' || $password === '') Http::json(['error' => 'email/password required'], 400);
     if (strlen($password) < 6) Http::json(['error' => 'password too short'], 400);
-    $institutionalRoles = ['institution', 'govt_body', 'ngo', 'vendor', 'advertiser', 'admin'];
+    if ($role === 'admin') {
+      Http::json(['error' => 'Admin accounts are provisioned internally'], 403);
+    }
+    $institutionalRoles = ['institution', 'govt_body', 'ngo', 'vendor', 'advertiser'];
     $isInstitutional = in_array($role, $institutionalRoles, true);
     $loginType = $isInstitutional ? 'institutional' : 'personal';
     $accountStatus = $isInstitutional ? 'pending' : 'active';
