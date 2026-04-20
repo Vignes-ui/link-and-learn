@@ -202,7 +202,7 @@ export default function NetworkPage() {
                       Accept
                     </button>
                     <button 
-                      onClick={() => handleResponse(user.id, 'rejected')}
+                      onClick={() => handleResponse(u.id, 'rejected')}
                       className="flex-1 bg-slate-100 text-slate-600 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-200 transition-all"
                     >
                       Ignore
