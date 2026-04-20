@@ -46,6 +46,7 @@ backend/sql/002_connections.sql
 backend/sql/003_notifications.sql
 backend/sql/004_ads.sql
 backend/sql/005_institution_endorsements_groups.sql
+backend/sql/006_push_notifications.sql
 ```
 
 These scripts are written with `CREATE TABLE IF NOT EXISTS`, so they are safe to rerun when a local database is missing a later feature table. The seeded admin account is:
@@ -60,6 +61,8 @@ Password: admin123
 - Confirm all SQL files above have been imported on the target database.
 - Confirm `vite.config.js` points `/api` and `/uploads` to the PHP server port.
 - Confirm `backend/uploads/` is writable by the PHP process.
+- For real push notifications, create a OneSignal Web Push app for the deployed site domain and set `ONESIGNAL_APP_ID` plus `ONESIGNAL_REST_API_KEY` in `backend/.env`.
+- Confirm `/push/onesignal/OneSignalSDKWorker.js` is publicly accessible from the frontend origin over HTTPS.
 - Sign in as the seeded admin and open `/admin`; the overview, users, articles, and ads calls should all return without server errors.
 
 ## 7. Start the frontend

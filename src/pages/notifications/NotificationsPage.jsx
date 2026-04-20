@@ -2,11 +2,14 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getNotifications, markAsRead, markAllAsRead, subscribeNotifications } from '../../api/notifications';
 import { Bell, CheckCircle2, Heart, MessageCircle, UserPlus, Clock, ArrowRight, Briefcase, CalendarDays, ShoppingCart } from 'lucide-react';
+import { getPushStatus, requestPushPermission } from '../../utils/pushNotifications';
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(() => Date.now());
+  const [pushStatus, setPushStatus] = useState({ enabled: false, permission: 'default', subscribed: false });
+  const [pushMsg, setPushMsg] = useState('');
   const navigate = useNavigate();
 
   const fetchNotifications = useCallback(async () => {
@@ -31,9 +34,26 @@ export default function NotificationsPage() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    getPushStatus().then(setPushStatus).catch(() => {});
+  }, []);
+
   const handleMarkAllRead = async () => {
     await markAllAsRead();
     fetchNotifications();
+  };
+
+  const handleEnablePush = async () => {
+    setPushMsg('Opening browser notification prompt...');
+    const status = await requestPushPermission();
+    setPushStatus(status || { enabled: false });
+    if (!status?.enabled) {
+      setPushMsg('Push notifications are not configured for this deployment.');
+    } else if (status.permission === 'granted' || status.subscribed) {
+      setPushMsg('Push notifications are enabled for this browser.');
+    } else {
+      setPushMsg('Permission was not granted. You can enable it later from browser site settings.');
+    }
   };
 
   const handleNotificationClick = async (n) => {
@@ -90,15 +110,31 @@ export default function NotificationsPage() {
         <h1 className="text-3xl font-display font-bold text-slate-900 flex items-center gap-3">
           Notifications <Bell className="w-8 h-8 text-primary-400" />
         </h1>
-        {notifications.some(n => !n.isRead) && (
-          <button 
-            onClick={handleMarkAllRead}
-            className="text-sm font-bold text-primary-600 hover:text-primary-700 hover:underline"
-          >
-            Mark all as read
-          </button>
-        )}
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          {pushStatus.enabled && pushStatus.permission !== 'granted' && (
+            <button
+              onClick={handleEnablePush}
+              className="rounded-xl bg-primary-600 px-4 py-2 text-sm font-bold text-white hover:bg-primary-700 transition-colors"
+            >
+              Enable push
+            </button>
+          )}
+          {notifications.some(n => !n.isRead) && (
+            <button 
+              onClick={handleMarkAllRead}
+              className="text-sm font-bold text-primary-600 hover:text-primary-700 hover:underline"
+            >
+              Mark all as read
+            </button>
+          )}
+        </div>
       </div>
+
+      {pushMsg && (
+        <div className="rounded-2xl border border-primary-100 bg-primary-50 px-4 py-3 text-sm font-semibold text-primary-700">
+          {pushMsg}
+        </div>
+      )}
 
       <div className="glass-panel rounded-[2rem] border border-white/60 shadow-sm overflow-hidden">
         {loading ? (

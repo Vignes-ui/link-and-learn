@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 
 import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut, Users, Bell, Megaphone } from 'lucide-react';
 import { subscribeNotifications } from '../api/notifications';
+import { initPushForUser } from '../utils/pushNotifications';
 
 const NAV_ITEMS = [
   { label: 'Feed', path: '/feed', icon: <FileText className="w-5 h-5" />, roles: '*' },
@@ -29,6 +30,7 @@ export default function Layout({ children }) {
 
   useEffect(() => {
     if (!userData) return;
+    initPushForUser(userData).catch(() => {});
     hydratedNotificationsRef.current = false;
     seenNotificationIdsRef.current = new Set();
     const unsub = subscribeNotifications((notifs) => {

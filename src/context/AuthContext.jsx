@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { getMe, logoutUser } from '../api/auth';
+import { logoutPushUser } from '../utils/pushNotifications';
 
 const AuthContext = createContext();
 
@@ -52,6 +53,7 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const logout = async () => {
+    await logoutPushUser();
     await logoutUser();
     applyUser(null);
   };

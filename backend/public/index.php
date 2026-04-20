@@ -6,6 +6,8 @@ require_once __DIR__ . '/../src/bootstrap.php';
 use LinkLearn\Http;
 use LinkLearn\Auth;
 use LinkLearn\Db;
+use LinkLearn\Env;
+use LinkLearn\PushNotification;
 
 Http::cors();
 
@@ -106,6 +108,14 @@ if (str_starts_with($path, '/uploads/')) {
 // Health
 if ($path === '/api/health') {
   Http::json(['ok' => true]);
+}
+
+if ($path === '/api/push/config' && $method === 'GET') {
+  Http::json([
+    'provider' => 'onesignal',
+    'enabled' => PushNotification::isConfigured(),
+    'appId' => Env::get('ONESIGNAL_APP_ID', ''),
+  ]);
 }
 
 // --- AUTH ---

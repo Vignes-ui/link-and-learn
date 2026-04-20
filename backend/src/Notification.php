@@ -6,6 +6,27 @@ class Notification {
         $pdo = Db::pdo();
         $stmt = $pdo->prepare("INSERT INTO notifications (user_id, from_user_id, type, message, related_id) VALUES (?,?,?,?,?)");
         $stmt->execute([$userId, $fromUserId, $type, $message, $relatedId]);
+        $notificationId = (int)$pdo->lastInsertId();
+
+        try {
+            $fromName = null;
+            if ($fromUserId !== null) {
+                $nameStmt = $pdo->prepare("SELECT name FROM users WHERE id=?");
+                $nameStmt->execute([$fromUserId]);
+                $fromName = $nameStmt->fetchColumn() ?: null;
+            }
+            PushNotification::sendToUser($userId, [
+                'id' => $notificationId,
+                'user_id' => $userId,
+                'from_user_id' => $fromUserId,
+                'from_name' => $fromName,
+                'type' => $type,
+                'message' => $message,
+                'related_id' => $relatedId,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('LinkLearn push send failed: ' . $e->getMessage());
+        }
     }
 
     public static function getForUser(int $userId, int $limit = 50): array {
