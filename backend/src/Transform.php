@@ -17,6 +17,8 @@ final class Transform {
       'status' => $row['status'],
       'aiScore' => $row['ai_score'],
       'aiCategory' => $row['ai_category'],
+      'plagiarismScore' => $row['plagiarism_score'] ?? null,
+      'fakeProfileScore' => $row['fake_profile_score'] ?? null,
       'adminNote' => $row['admin_note'] ?? '',
       'createdAt' => gmdate('c', strtotime($row['created_at'])),
       'updatedAt' => gmdate('c', strtotime($row['updated_at'])),
@@ -36,6 +38,7 @@ final class Transform {
       'capacity' => (int)$row['capacity'],
       'registeredCount' => (int)$row['registered_count'],
       'status' => $row['status'],
+      'attendees' => self::jsonArr($row['attendees_json'] ?? null),
       'createdAt' => gmdate('c', strtotime($row['created_at'])),
     ];
   }
@@ -52,6 +55,7 @@ final class Transform {
       'description' => $row['description'],
       'deadline' => $row['deadline'],
       'status' => $row['status'],
+      'applicants' => self::jsonArr($row['applicants_json'] ?? null),
       'createdAt' => gmdate('c', strtotime($row['created_at'])),
     ];
   }
@@ -69,7 +73,29 @@ final class Transform {
       'deadline' => $row['deadline'],
       'location' => $row['location'],
       'status' => $row['status'],
+      'quotes' => self::jsonArr($row['quotes_json'] ?? null),
       'createdAt' => gmdate('c', strtotime($row['created_at'])),
+    ];
+  }
+
+  public static function ad(array $row): array {
+    return [
+      'id' => (string)$row['id'],
+      'uid' => (string)$row['user_id'],
+      'advertiserName' => $row['advertiser_name'],
+      'advertiserRole' => $row['advertiser_role'],
+      'title' => $row['title'],
+      'description' => $row['description'],
+      'placement' => $row['placement'],
+      'targetAudience' => self::jsonArr($row['target_audience_json'] ?? null),
+      'destinationUrl' => $row['destination_url'],
+      'budget' => $row['budget'],
+      'impressions' => (int)($row['impressions'] ?? 0),
+      'clicks' => (int)($row['clicks'] ?? 0),
+      'status' => $row['status'],
+      'adminNote' => $row['admin_note'] ?? '',
+      'createdAt' => gmdate('c', strtotime($row['created_at'])),
+      'updatedAt' => gmdate('c', strtotime($row['updated_at'])),
     ];
   }
 
@@ -85,6 +111,7 @@ final class Transform {
       'accountStatus' => $row['accountStatus'],
       'profileCompleted' => (bool)$row['profileCompleted'],
       'avatar' => $row['avatar'] ?? '',
+      'bio' => $row['bio'] ?? '',
       'verifiedBadge' => (bool)$row['verifiedBadge'],
       'certificates' => $certs,
       'createdAt' => isset($row['createdAt']) ? gmdate('c', strtotime($row['createdAt'])) : null,

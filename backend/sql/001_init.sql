@@ -83,6 +83,8 @@ CREATE TABLE IF NOT EXISTS articles (
   status VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending | published | flagged | rejected
   ai_score DECIMAL(5,2) NULL,
   ai_category VARCHAR(128) NULL,
+  plagiarism_score DECIMAL(5,2) NULL,
+  fake_profile_score DECIMAL(5,2) NULL,
   admin_note TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -219,6 +221,29 @@ CREATE TABLE IF NOT EXISTS messages (
   KEY idx_messages_conversation_created (conversation_id, created_at),
   CONSTRAINT fk_messages_conversation FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
   CONSTRAINT fk_messages_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ads (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  advertiser_name VARCHAR(255) NOT NULL,
+  advertiser_role VARCHAR(32) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NULL,
+  placement VARCHAR(64) NOT NULL DEFAULT 'feed',
+  target_audience_json JSON NULL,
+  destination_url TEXT NULL,
+  budget VARCHAR(64) NULL,
+  impressions INT NOT NULL DEFAULT 0,
+  clicks INT NOT NULL DEFAULT 0,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending', -- pending | approved | rejected | paused
+  admin_note TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_ads_status_created (status, created_at),
+  KEY idx_ads_user_created (user_id, created_at),
+  CONSTRAINT fk_ads_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Seed an admin user (password: admin123). Change after first login.

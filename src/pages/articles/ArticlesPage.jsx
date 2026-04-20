@@ -20,7 +20,7 @@ export default function ArticlesPage() {
   const [publishing, setPublishing] = useState(false);
   const [msg, setMsg] = useState('');
 
-  const canPublish = ['researcher', 'govt_body', 'admin'].includes(userData?.role);
+  const canPublish = ['researcher', 'institution', 'govt_body', 'ngo', 'admin'].includes(userData?.role);
 
   useEffect(() => {
     const unsub = subscribeArticles(setArticles);

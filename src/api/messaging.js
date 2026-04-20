@@ -13,14 +13,14 @@ export const subscribeMessages = (_senderIdIgnored, receiverId, callback) => {
   return poll(async () => {
     const { messages } = await apiFetch(`/api/conversations/${receiverId}/messages`);
     callback(messages || []);
-  }, 2000);
+  }, 1000);
 };
 
 export const subscribeConversations = (_uidIgnored, callback) => {
   return poll(async () => {
     const { conversations } = await apiFetch('/api/conversations');
     callback(conversations || []);
-  }, 3000);
+  }, 1500);
 };
 
 export const searchUsers = async (searchTerm) => {

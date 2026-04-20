@@ -1,24 +1,39 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { createPost, subscribeFeed, toggleLike, addComment, deletePost } from '../../api/posts';
 import { getConnections, requestConnection } from '../../api/connections';
+import { subscribeAds, recordAdImpression, recordAdClick } from '../../api/ads';
 import { Send, FileText, UserPlus, Clock as ClockIcon } from 'lucide-react';
 
 export default function FeedPage() {
   const { currentUser, userData } = useAuth();
+  const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
+  const [ads, setAds] = useState([]);
   const [content, setContent] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [posting, setPosting] = useState(false);
   const [commentText, setCommentText] = useState({});
   const [openComments, setOpenComments] = useState({});
   const [myConnections, setMyConnections] = useState([]);
+  const seenAdIds = useRef(new Set());
 
   useEffect(() => {
     const unsub = subscribeFeed(setPosts);
+    const unsubAds = subscribeAds(setAds);
     fetchConnections();
-    return () => unsub();
+    return () => { unsub(); unsubAds(); };
   }, []);
+
+  useEffect(() => {
+    ads.forEach((ad) => {
+      if (!seenAdIds.current.has(ad.id)) {
+        seenAdIds.current.add(ad.id);
+        recordAdImpression(ad.id).catch(() => {});
+      }
+    });
+  }, [ads]);
 
   const fetchConnections = async () => {
     try {
@@ -127,6 +142,28 @@ export default function FeedPage() {
 
       {/* Feed Area */}
       <div className="space-y-6 relative">
+        {ads.slice(0, 1).map((ad) => {
+          return (
+            <button
+              key={ad.id}
+              onClick={() => {
+                recordAdClick(ad.id).catch(() => {});
+                if (ad.destinationUrl) window.open(ad.destinationUrl, '_blank', 'noopener,noreferrer');
+              }}
+              className="w-full text-left glass-panel rounded-[2rem] shadow-sm p-6 border border-amber-200/70 bg-gradient-to-r from-amber-50 to-white hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <span className="text-[10px] font-bold uppercase tracking-widest bg-amber-200 text-amber-900 px-2.5 py-1 rounded-full">
+                  Sponsored
+                </span>
+                <span className="text-xs font-semibold text-slate-500">{ad.advertiserName}</span>
+              </div>
+              <h3 className="text-xl font-display font-bold text-slate-900 mb-2">{ad.title}</h3>
+              <p className="text-slate-600 leading-relaxed">{ad.description}</p>
+            </button>
+          );
+        })}
+
         {posts.length === 0 && (
           <div className="text-center py-20 px-6 glass-panel rounded-[2rem] border border-white/60">
             <div className="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center text-4xl mx-auto mb-4 border border-slate-200 shadow-inner">

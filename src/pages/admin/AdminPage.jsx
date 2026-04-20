@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
 import { getAllUsers, updateAccountStatus, updateCertificateStatus } from '../../api/profile';
 import { updateArticleStatus } from '../../api/articles';
+import { getPendingAds, updateAdStatus } from '../../api/ads';
 import { apiFetch } from '../../api/http';
-import { Building2, GraduationCap, FileText, ShieldCheck, Sparkles, ScrollText, Bot, CheckCircle2 } from 'lucide-react';
+import { Building2, GraduationCap, FileText, ShieldCheck, Sparkles, ScrollText, Bot, CheckCircle2, Megaphone } from 'lucide-react';
 
-const ADMIN_TABS = ['institutions', 'certificates', 'articles'];
+const ADMIN_TABS = ['institutions', 'certificates', 'articles', 'ads'];
 
 export default function AdminPage() {
   const [tab, setTab] = useState('institutions');
   const [pendingInstitutions, setPendingInstitutions] = useState([]);
   const [pendingCerts, setPendingCerts] = useState([]);
   const [pendingArticles, setPendingArticles] = useState([]);
+  const [pendingAds, setPendingAds] = useState([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -25,6 +27,7 @@ export default function AdminPage() {
       })));
       const { articles } = await apiFetch('/api/articles?status=pending');
       setPendingArticles(articles || []);
+      setPendingAds(await getPendingAds());
     } finally { setLoading(false); }
   };
 
@@ -54,10 +57,19 @@ export default function AdminPage() {
     load();
   };
 
+  const handleAd = async (adId, status, reason = '') => {
+    setMsg('');
+    await updateAdStatus(adId, status, reason);
+    setMsg(`Campaign ${status}`);
+    setTimeout(() => setMsg(''), 3000);
+    load();
+  };
+
   const tabs = {
     institutions: { label: 'Institutions', icon: <Building2 className="w-8 h-8" />, count: pendingInstitutions.length },
     certificates: { label: 'Certificates', icon: <GraduationCap className="w-8 h-8" />, count: pendingCerts.length },
     articles: { label: 'Articles', icon: <FileText className="w-8 h-8" />, count: pendingArticles.length },
+    ads: { label: 'Ads', icon: <Megaphone className="w-8 h-8" />, count: pendingAds.length },
   };
 
   return (
@@ -305,6 +317,24 @@ export default function AdminPage() {
                                 <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{article.aiCategory}</span>
                               </div>
                             )}
+                            {article.plagiarismScore !== null && (
+                              <>
+                                <div className="h-8 w-px bg-slate-200"></div>
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plagiarism Risk</p>
+                                  <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{Math.round(article.plagiarismScore * 100)}%</span>
+                                </div>
+                              </>
+                            )}
+                            {article.fakeProfileScore !== null && (
+                              <>
+                                <div className="h-8 w-px bg-slate-200"></div>
+                                <div>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Profile Risk</p>
+                                  <span className="text-xs font-bold bg-slate-200 text-slate-700 px-2 py-0.5 rounded">{Math.round(article.fakeProfileScore * 100)}%</span>
+                                </div>
+                              </>
+                            )}
                           </div>
                         )}
                         
@@ -323,6 +353,48 @@ export default function AdminPage() {
                           Reject
                         </button>
                       </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === 'ads' && (
+          <div className="p-8 animate-fade-in">
+            <h2 className="font-display font-bold text-2xl text-slate-900 mb-6 flex items-center gap-3">
+              <span className="bg-slate-100 w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-200"><Megaphone className="w-5 h-5 text-slate-600" /></span>
+              Pending Campaigns
+            </h2>
+
+            {pendingAds.length === 0 ? (
+              <div className="text-center py-16 bg-white/40 rounded-3xl border border-slate-200 border-dashed">
+                <Sparkles className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <p className="text-lg font-bold text-slate-600">All caught up!</p>
+                <p className="text-slate-500 font-medium mt-1">No campaigns pending approval.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {pendingAds.map((ad) => (
+                  <div key={ad.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded uppercase tracking-widest border border-amber-200">{ad.placement}</span>
+                        <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded uppercase tracking-widest border border-blue-200">{ad.advertiserRole}</span>
+                      </div>
+                      <p className="font-bold text-xl text-slate-900">{ad.title}</p>
+                      <p className="text-sm text-slate-500 mb-3">{ad.advertiserName}</p>
+                      <p className="text-slate-600 leading-relaxed">{ad.description}</p>
+                    </div>
+
+                    <div className="flex flex-row md:flex-col gap-3 shrink-0">
+                      <button onClick={() => handleAd(ad.id, 'approved')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-emerald-700 shadow-sm transition-colors">
+                        Approve
+                      </button>
+                      <button onClick={() => handleAd(ad.id, 'rejected', 'Campaign rejected during moderation review')} className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white text-red-600 border border-red-200 px-5 py-2.5 rounded-xl text-sm font-bold hover:bg-red-50 shadow-sm transition-colors">
+                        Reject
+                      </button>
                     </div>
                   </div>
                 ))}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getNotifications, markAsRead, markAllAsRead, subscribeNotifications } from '../../api/notifications';
-import { Bell, CheckCircle2, Heart, MessageCircle, UserPlus, Clock, ArrowRight } from 'lucide-react';
+import { Bell, CheckCircle2, Heart, MessageCircle, UserPlus, Clock, ArrowRight, Briefcase, CalendarDays, ShoppingCart } from 'lucide-react';
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState([]);
@@ -40,6 +40,14 @@ export default function NotificationsPage() {
       navigate('/network');
     } else if (n.type === 'post_like' || n.type === 'post_comment') {
       navigate('/feed'); // Ideally go to specific post
+    } else if (n.type === 'recruitment_match' || n.type === 'job_application') {
+      navigate('/recruitment');
+    } else if (n.type === 'event_alert') {
+      navigate('/events');
+    } else if (n.type === 'vendor_requirement' || n.type === 'vendor_quote') {
+      navigate('/vendor');
+    } else if (n.type === 'message_received') {
+      navigate('/messages');
     }
   };
 
@@ -58,6 +66,14 @@ export default function NotificationsPage() {
       case 'connection_accepted': return <CheckCircle2 className="w-5 h-5 text-emerald-500" />;
       case 'post_like': return <Heart className="w-5 h-5 text-red-500" fill="currentColor" />;
       case 'post_comment': return <MessageCircle className="w-5 h-5 text-indigo-500" />;
+      case 'recruitment_match':
+      case 'job_application':
+        return <Briefcase className="w-5 h-5 text-emerald-500" />;
+      case 'event_alert':
+        return <CalendarDays className="w-5 h-5 text-amber-500" />;
+      case 'vendor_requirement':
+      case 'vendor_quote':
+        return <ShoppingCart className="w-5 h-5 text-teal-500" />;
       default: return <Bell className="w-5 h-5 text-slate-400" />;
     }
   };

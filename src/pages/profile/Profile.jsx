@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { updateProfile, uploadAvatar, uploadCertificate, deleteAccount } from '../../api/profile';
 import { Camera, CheckCircle2, Clock, XCircle, Info, GraduationCap, Paperclip, FileText, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { downloadResumePdf } from '../../utils/resumePdf';
 
 const SKILL_SUGGESTIONS = ['React','Python','Machine Learning','Data Science','Research','Teaching','JavaScript','Firebase','Java','C++','Deep Learning','NLP'];
 
@@ -133,7 +134,10 @@ export default function Profile() {
 
           {/* Resume Download placeholder */}
           <div className="mb-2">
-            <button className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2">
+            <button
+              onClick={() => downloadResumePdf(userData || {})}
+              className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center gap-2"
+            >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
               Resume PDF
             </button>

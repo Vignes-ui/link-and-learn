@@ -1,8 +1,8 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut, Users, Bell } from 'lucide-react';
+import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut, Users, Bell, Megaphone } from 'lucide-react';
 import { subscribeNotifications } from '../api/notifications';
 
 const NAV_ITEMS = [
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { label: 'Messages', path: '/messages', icon: <MessageSquare className="w-5 h-5" />, roles: '*' },
   { label: 'Notifications', path: '/notifications', icon: <Bell className="w-5 h-5" />, roles: '*' },
   { label: 'Vendor', path: '/vendor', icon: <Building2 className="w-5 h-5" />, roles: ['institution','govt_body','ngo','vendor','admin'] },
+  { label: 'Ads', path: '/ads', icon: <Megaphone className="w-5 h-5" />, roles: ['advertiser','institution','govt_body','ngo','vendor','admin'] },
   { label: 'Admin', path: '/admin', icon: <ShieldCheck className="w-5 h-5" />, roles: ['admin'] },
 ];
 
@@ -23,11 +24,35 @@ export default function Layout({ children }) {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const seenNotificationIdsRef = useRef(new Set());
+  const hydratedNotificationsRef = useRef(false);
 
   useEffect(() => {
     if (!userData) return;
+    hydratedNotificationsRef.current = false;
+    seenNotificationIdsRef.current = new Set();
     const unsub = subscribeNotifications((notifs) => {
       setUnreadCount(notifs.filter(n => !n.isRead).length);
+      if (!hydratedNotificationsRef.current) {
+        notifs.forEach((notif) => seenNotificationIdsRef.current.add(notif.id));
+        hydratedNotificationsRef.current = true;
+        return;
+      }
+      for (const notif of notifs) {
+        if (!notif.isRead && !seenNotificationIdsRef.current.has(notif.id)) {
+          seenNotificationIdsRef.current.add(notif.id);
+          if ('Notification' in window) {
+            if (Notification.permission === 'default') {
+              Notification.requestPermission().catch(() => {});
+            }
+            if (Notification.permission === 'granted') {
+              new Notification('Link & Learn', {
+                body: notif.fromUser ? `${notif.fromUser.name} ${notif.message}` : notif.message,
+              });
+            }
+          }
+        }
+      }
     });
     return () => unsub();
   }, [userData]);

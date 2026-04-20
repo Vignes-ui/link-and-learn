@@ -17,6 +17,7 @@ import MessagingPage from './pages/messaging/MessagingPage';
 import NetworkPage from './pages/network/NetworkPage';
 import NotificationsPage from './pages/notifications/NotificationsPage';
 import VendorPage from './pages/vendor/VendorPage';
+import AdsPage from './pages/ads/AdsPage';
 import AdminPage from './pages/admin/AdminPage';
 
 // Guards + Layout
@@ -127,6 +128,15 @@ function App() {
           <ProtectedRoute>
             <ProfileGuard>
               <Layout><VendorPage /></Layout>
+            </ProfileGuard>
+          </ProtectedRoute>
+        } />
+
+        {/* Advertisement Module */}
+        <Route path="/ads" element={
+          <ProtectedRoute allowedRoles={['advertiser', 'institution', 'govt_body', 'ngo', 'vendor', 'admin']}>
+            <ProfileGuard>
+              <Layout><AdsPage /></Layout>
             </ProfileGuard>
           </ProtectedRoute>
         } />

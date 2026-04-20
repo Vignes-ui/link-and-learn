@@ -12,6 +12,87 @@ Http::cors();
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
+function ll_json_decode_array($value): array {
+  if ($value === null) return [];
+  if (is_array($value)) return $value;
+  $decoded = json_decode((string)$value, true);
+  return is_array($decoded) ? $decoded : [];
+}
+
+function ll_match_score(array $candidate, string $roleType, string $department, string $description, string $eligibility): int {
+  $roleType = strtolower($roleType);
+  $haystack = strtolower(trim($department . ' ' . $description . ' ' . $eligibility));
+  $score = 0;
+  $candidateRole = strtolower((string)($candidate['role'] ?? ''));
+
+  if (in_array($candidateRole, ['student', 'researcher'], true)) {
+    $score += 1;
+  }
+  if ($candidateRole === 'researcher' && in_array($roleType, ['faculty', 'research'], true)) {
+    $score += 3;
+  }
+  if ($candidateRole === 'student' && in_array($roleType, ['phd', 'internship'], true)) {
+    $score += 3;
+  }
+
+  $keywords = array_filter(array_map(
+    static fn($v) => strtolower(trim((string)$v)),
+    array_merge(
+      ll_json_decode_array($candidate['skills_json'] ?? '[]'),
+      array_column(ll_json_decode_array($candidate['education_json'] ?? '[]'), 'degree'),
+      array_column(ll_json_decode_array($candidate['publications_json'] ?? '[]'), 'title')
+    )
+  ));
+
+  foreach ($keywords as $keyword) {
+    if ($keyword !== '' && str_contains($haystack, $keyword)) {
+      $score += 2;
+    }
+  }
+
+  $bio = strtolower((string)($candidate['bio'] ?? ''));
+  if ($bio !== '') {
+    foreach (array_filter(explode(' ', $bio)) as $token) {
+      $token = trim($token);
+      if (strlen($token) > 4 && str_contains($haystack, $token)) {
+        $score += 1;
+      }
+    }
+  }
+
+  return $score;
+}
+
+function ll_send_matching_notifications(string $kind, array $actor, array $payload): void {
+  $pdo = Db::pdo();
+
+  if ($kind === 'vacancy') {
+    $stmt = $pdo->query("SELECT id, role, bio, skills_json, education_json, publications_json FROM users WHERE account_status='active' AND role IN ('student','researcher')");
+    $candidates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($candidates as $candidate) {
+      $score = ll_match_score($candidate, (string)$payload['roleType'], (string)$payload['department'], (string)$payload['description'], (string)$payload['eligibility']);
+      if ($score >= 3) {
+        LinkLearn\Notification::send((int)$candidate['id'], (int)$actor['id'], 'recruitment_match', "matched a {$payload['roleType']} opportunity: {$payload['role']}", (int)$payload['id']);
+      }
+    }
+  }
+
+  if ($kind === 'event') {
+    $stmt = $pdo->query("SELECT id FROM users WHERE account_status='active'");
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $user) {
+      if ((int)$user['id'] === (int)$actor['id']) continue;
+      LinkLearn\Notification::send((int)$user['id'], (int)$actor['id'], 'event_alert', "posted a new event: {$payload['title']}", (int)$payload['id']);
+    }
+  }
+
+  if ($kind === 'requirement') {
+    $stmt = $pdo->query("SELECT id FROM users WHERE account_status='active' AND role='vendor'");
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $vendor) {
+      LinkLearn\Notification::send((int)$vendor['id'], (int)$actor['id'], 'vendor_requirement', "posted a procurement request for {$payload['itemType']}", (int)$payload['id']);
+    }
+  }
+}
+
 // Static uploads are served by web server. For PHP built-in server, we map /uploads here.
 if (str_starts_with($path, '/uploads/')) {
   $file = realpath(__DIR__ . '/../uploads' . substr($path, strlen('/uploads')));
@@ -264,8 +345,11 @@ if (preg_match('#^/api/posts/(\\d+)$#', $path, $m) && $method === 'DELETE') {
 
 // --- ARTICLES ---
 if ($path === '/api/articles' && $method === 'GET') {
-  Auth::requireUser();
+  $me = Auth::requireUser();
   $status = (string)($_GET['status'] ?? 'published');
+  if ($status !== 'published' && ($me['role'] ?? '') !== 'admin') {
+    Http::json(['error' => 'forbidden'], 403);
+  }
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("SELECT * FROM articles WHERE status=? ORDER BY created_at DESC LIMIT 200");
   $stmt->execute([$status]);
@@ -274,7 +358,7 @@ if ($path === '/api/articles' && $method === 'GET') {
 }
 
 if ($path === '/api/articles' && $method === 'POST') {
-  $me = Auth::requireUser();
+  $me = Auth::requireRole(['researcher', 'institution', 'govt_body', 'ngo', 'admin']);
   $body = Http::jsonBody();
   $title = trim((string)($body['title'] ?? ''));
   $content = (string)($body['content'] ?? '');
@@ -287,6 +371,8 @@ if ($path === '/api/articles' && $method === 'POST') {
   $hfToken = LinkLearn\Env::get('HF_API_TOKEN', '');
   $aiScore = null;
   $aiCategory = null;
+  $plagiarismScore = null;
+  $fakeProfileScore = null;
 
   if ($hfToken) {
     $ch = curl_init('https://api-inference.huggingface.co/models/roberta-base-openai-detector');
@@ -329,8 +415,20 @@ if ($path === '/api/articles' && $method === 'POST') {
     }
   }
 
+  $normalizedContent = preg_replace('/\s+/', ' ', strtolower(trim($content)));
+  $tokens = array_values(array_filter(explode(' ', $normalizedContent), static fn($token) => strlen($token) > 3));
+  $uniqueTokens = array_unique($tokens);
+  $plagiarismScore = count($tokens) > 0 ? round(1 - (count($uniqueTokens) / count($tokens)), 2) : 0.0;
+
+  $profileSignals = 0;
+  if (trim((string)($me['bio'] ?? '')) === '') $profileSignals += 0.35;
+  if (count((array)($me['skills'] ?? [])) === 0) $profileSignals += 0.2;
+  if (count((array)($me['education'] ?? [])) === 0) $profileSignals += 0.2;
+  if (count((array)($me['publications'] ?? [])) === 0 && in_array((string)$me['role'], ['researcher', 'govt_body'], true)) $profileSignals += 0.25;
+  $fakeProfileScore = min(1, round($profileSignals, 2));
+
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("INSERT INTO articles (user_id, author_name, author_role, title, content, category, tags_json, status, ai_score, ai_category) VALUES (?,?,?,?,?,?,?, 'pending', ?, ?)");
+  $stmt = $pdo->prepare("INSERT INTO articles (user_id, author_name, author_role, title, content, category, tags_json, status, ai_score, ai_category, plagiarism_score, fake_profile_score) VALUES (?,?,?,?,?,?,?, 'pending', ?, ?, ?, ?)");
   $stmt->execute([
     (int)$me['id'], 
     $me['name'], 
@@ -340,7 +438,9 @@ if ($path === '/api/articles' && $method === 'POST') {
     $category, 
     json_encode($tags),
     $aiScore,
-    $aiCategory
+    $aiCategory,
+    $plagiarismScore,
+    $fakeProfileScore
   ]);
   Http::json(['ok' => true, 'id' => (string)$pdo->lastInsertId()]);
 }
@@ -378,13 +478,30 @@ if (preg_match('#^/api/admin/articles/(\\d+)/status$#', $path, $m) && $method ==
 if ($path === '/api/events' && $method === 'GET') {
   Auth::requireUser();
   $pdo = Db::pdo();
-  $stmt = $pdo->query("SELECT * FROM events ORDER BY created_at DESC LIMIT 200");
+  $stmt = $pdo->query("
+    SELECT e.*,
+      COALESCE((
+        SELECT JSON_ARRAYAGG(JSON_OBJECT(
+          'uid', CAST(a.user_id AS CHAR),
+          'name', a.name,
+          'email', a.email,
+          'ticketId', a.ticket_id,
+          'attended', a.attended,
+          'registeredAt', DATE_FORMAT(a.registered_at, '%Y-%m-%dT%H:%i:%sZ')
+        ))
+        FROM event_attendees a
+        WHERE a.event_id = e.id
+      ), JSON_ARRAY()) AS attendees_json
+    FROM events e
+    ORDER BY e.created_at DESC
+    LIMIT 200
+  ");
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
   Http::json(['events' => array_map('LinkLearn\\Transform::event', $rows)]);
 }
 
 if ($path === '/api/events' && $method === 'POST') {
-  $me = Auth::requireUser();
+  $me = Auth::requireRole(['institution', 'govt_body', 'ngo', 'researcher', 'admin']);
   $body = Http::jsonBody();
   $title = trim((string)($body['title'] ?? ''));
   if ($title === '') Http::json(['error' => 'title required'], 400);
@@ -402,7 +519,12 @@ if ($path === '/api/events' && $method === 'POST') {
     $dateTime,
     (int)($body['capacity'] ?? 0),
   ]);
-  Http::json(['ok' => true, 'id' => (string)$pdo->lastInsertId()]);
+  $eventId = (int)$pdo->lastInsertId();
+  ll_send_matching_notifications('event', $me, [
+    'id' => $eventId,
+    'title' => $title,
+  ]);
+  Http::json(['ok' => true, 'id' => (string)$eventId]);
 }
 
 if (preg_match('#^/api/events/(\\d+)/register$#', $path, $m) && $method === 'POST') {
@@ -429,7 +551,25 @@ if (preg_match('#^/api/events/(\\d+)/register$#', $path, $m) && $method === 'POS
 if ($path === '/api/events/mine' && $method === 'GET') {
   $me = Auth::requireUser();
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT * FROM events WHERE user_id=? ORDER BY created_at DESC LIMIT 200");
+  $stmt = $pdo->prepare("
+    SELECT e.*,
+      COALESCE((
+        SELECT JSON_ARRAYAGG(JSON_OBJECT(
+          'uid', CAST(a.user_id AS CHAR),
+          'name', a.name,
+          'email', a.email,
+          'ticketId', a.ticket_id,
+          'attended', a.attended,
+          'registeredAt', DATE_FORMAT(a.registered_at, '%Y-%m-%dT%H:%i:%sZ')
+        ))
+        FROM event_attendees a
+        WHERE a.event_id = e.id
+      ), JSON_ARRAY()) AS attendees_json
+    FROM events e
+    WHERE e.user_id=?
+    ORDER BY e.created_at DESC
+    LIMIT 200
+  ");
   $stmt->execute([(int)$me['id']]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
   Http::json(['events' => array_map('LinkLearn\\Transform::event', $rows)]);
@@ -499,7 +639,7 @@ if ($path === '/api/vacancies' && $method === 'GET') {
 }
 
 if ($path === '/api/vacancies' && $method === 'POST') {
-  $me = Auth::requireUser();
+  $me = Auth::requireRole(['institution', 'govt_body', 'ngo', 'admin']);
   $body = Http::jsonBody();
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("INSERT INTO vacancies (user_id, institution_name, role, role_type, department, eligibility, description, deadline, status) VALUES (?,?,?,?,?,?,?,?,'open')");
@@ -513,25 +653,58 @@ if ($path === '/api/vacancies' && $method === 'POST') {
     (string)($body['description'] ?? ''),
     (string)($body['deadline'] ?? ''),
   ]);
-  Http::json(['ok' => true, 'id' => (string)$pdo->lastInsertId()]);
+  $vacancyId = (int)$pdo->lastInsertId();
+  ll_send_matching_notifications('vacancy', $me, [
+    'id' => $vacancyId,
+    'role' => (string)($body['role'] ?? ''),
+    'roleType' => (string)($body['roleType'] ?? ''),
+    'department' => (string)($body['department'] ?? ''),
+    'description' => (string)($body['description'] ?? ''),
+    'eligibility' => (string)($body['eligibility'] ?? ''),
+  ]);
+  Http::json(['ok' => true, 'id' => (string)$vacancyId]);
 }
 
 if ($path === '/api/vacancies/mine' && $method === 'GET') {
   $me = Auth::requireUser();
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT * FROM vacancies WHERE user_id=? ORDER BY created_at DESC LIMIT 200");
+  $stmt = $pdo->prepare("
+    SELECT v.*,
+      COALESCE((
+        SELECT JSON_ARRAYAGG(JSON_OBJECT(
+          'uid', CAST(a.user_id AS CHAR),
+          'name', a.name,
+          'email', a.email,
+          'role', a.role,
+          'status', a.status,
+          'appliedAt', DATE_FORMAT(a.applied_at, '%Y-%m-%dT%H:%i:%sZ')
+        ))
+        FROM vacancy_applicants a
+        WHERE a.vacancy_id = v.id
+      ), JSON_ARRAY()) AS applicants_json
+    FROM vacancies v
+    WHERE v.user_id=?
+    ORDER BY v.created_at DESC
+    LIMIT 200
+  ");
   $stmt->execute([(int)$me['id']]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
   Http::json(['vacancies' => array_map('LinkLearn\\Transform::vacancy', $rows)]);
 }
 
 if (preg_match('#^/api/vacancies/(\\d+)/apply$#', $path, $m) && $method === 'POST') {
-  $me = Auth::requireUser();
+  $me = Auth::requireRole(['student', 'researcher', 'admin']);
   $vacId = (int)$m[1];
   $pdo = Db::pdo();
   $pdo->prepare("INSERT INTO vacancy_applicants (vacancy_id, user_id, name, email, role, status) VALUES (?,?,?,?,?, 'applied')
     ON DUPLICATE KEY UPDATE status='applied'")
     ->execute([$vacId, (int)$me['id'], $me['name'], $me['email'], $me['role']]);
+  $owner = $pdo->prepare("SELECT user_id, role FROM vacancies WHERE id=?");
+  $owner->execute([$vacId]);
+  $vacancy = $owner->fetch(PDO::FETCH_ASSOC);
+  if ($vacancy && (int)$vacancy['user_id'] !== (int)$me['id']) {
+    LinkLearn\Notification::send((int)$vacancy['user_id'], (int)$me['id'], 'job_application', "applied to your {$vacancy['role']} posting", $vacId);
+  }
   Http::json(['ok' => true]);
 }
 
@@ -600,7 +773,7 @@ if ($path === '/api/requirements' && $method === 'GET') {
 }
 
 if ($path === '/api/requirements' && $method === 'POST') {
-  $me = Auth::requireUser();
+  $me = Auth::requireRole(['institution', 'govt_body', 'ngo', 'admin']);
   $body = Http::jsonBody();
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("INSERT INTO requirements (user_id, institution_name, item_type, description, quantity, budget_min, budget_max, deadline, location, status) VALUES (?,?,?,?,?,?,?,?,?, 'open')");
@@ -615,26 +788,56 @@ if ($path === '/api/requirements' && $method === 'POST') {
     (string)($body['deadline'] ?? ''),
     (string)($body['location'] ?? ''),
   ]);
-  Http::json(['ok' => true, 'id' => (string)$pdo->lastInsertId()]);
+  $requirementId = (int)$pdo->lastInsertId();
+  ll_send_matching_notifications('requirement', $me, [
+    'id' => $requirementId,
+    'itemType' => (string)($body['itemType'] ?? ''),
+  ]);
+  Http::json(['ok' => true, 'id' => (string)$requirementId]);
 }
 
 if ($path === '/api/requirements/mine' && $method === 'GET') {
   $me = Auth::requireUser();
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT * FROM requirements WHERE user_id=? ORDER BY created_at DESC LIMIT 200");
+  $stmt = $pdo->prepare("
+    SELECT r.*,
+      COALESCE((
+        SELECT JSON_ARRAYAGG(JSON_OBJECT(
+          'vendorUid', CAST(q.vendor_user_id AS CHAR),
+          'vendorName', q.vendor_name,
+          'price', q.price,
+          'timeline', q.timeline,
+          'terms', q.terms,
+          'submittedAt', DATE_FORMAT(q.submitted_at, '%Y-%m-%dT%H:%i:%sZ'),
+          'status', q.status
+        ))
+        FROM requirement_quotes q
+        WHERE q.requirement_id = r.id
+      ), JSON_ARRAY()) AS quotes_json
+    FROM requirements r
+    WHERE r.user_id=?
+    ORDER BY r.created_at DESC
+    LIMIT 200
+  ");
   $stmt->execute([(int)$me['id']]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
   Http::json(['requirements' => array_map('LinkLearn\\Transform::requirement', $rows)]);
 }
 
 if (preg_match('#^/api/requirements/(\\d+)/quotes$#', $path, $m) && $method === 'POST') {
-  $me = Auth::requireUser();
+  $me = Auth::requireRole(['vendor', 'admin']);
   $reqId = (int)$m[1];
   $body = Http::jsonBody();
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("INSERT INTO requirement_quotes (requirement_id, vendor_user_id, vendor_name, price, timeline, terms, status) VALUES (?,?,?,?,?,?, 'pending')
     ON DUPLICATE KEY UPDATE price=VALUES(price), timeline=VALUES(timeline), terms=VALUES(terms), status='pending'");
   $stmt->execute([$reqId, (int)$me['id'], $me['name'], (string)($body['price'] ?? ''), (string)($body['timeline'] ?? ''), (string)($body['terms'] ?? '')]);
+  $owner = $pdo->prepare("SELECT user_id, item_type FROM requirements WHERE id=?");
+  $owner->execute([$reqId]);
+  $requirement = $owner->fetch(PDO::FETCH_ASSOC);
+  if ($requirement && (int)$requirement['user_id'] !== (int)$me['id']) {
+    LinkLearn\Notification::send((int)$requirement['user_id'], (int)$me['id'], 'vendor_quote', "submitted a quote for {$requirement['item_type']}", $reqId);
+  }
   Http::json(['ok' => true]);
 }
 
@@ -654,6 +857,86 @@ if (preg_match('#^/api/requirements/(\\d+)/award$#', $path, $m) && $method === '
     ->execute([$vendorUid, $reqId]);
   $pdo->prepare("UPDATE requirements SET status='awarded' WHERE id=?")->execute([$reqId]);
   $pdo->commit();
+  Http::json(['ok' => true]);
+}
+
+// --- ADS ---
+if ($path === '/api/ads' && $method === 'GET') {
+  Auth::requireUser();
+  $status = (string)($_GET['status'] ?? 'approved');
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("SELECT * FROM ads WHERE status=? ORDER BY created_at DESC LIMIT 200");
+  $stmt->execute([$status]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  Http::json(['ads' => array_map('LinkLearn\\Transform::ad', $rows)]);
+}
+
+if ($path === '/api/ads' && $method === 'POST') {
+  $me = Auth::requireRole(['advertiser', 'institution', 'govt_body', 'ngo', 'vendor', 'admin']);
+  $body = Http::jsonBody();
+  $title = trim((string)($body['title'] ?? ''));
+  $placement = trim((string)($body['placement'] ?? 'feed'));
+  $audience = $body['targetAudience'] ?? [];
+  if ($title === '') Http::json(['error' => 'title required'], 400);
+  if (!is_array($audience)) $audience = [];
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("INSERT INTO ads (user_id, advertiser_name, advertiser_role, title, description, placement, target_audience_json, destination_url, budget, status) VALUES (?,?,?,?,?,?,?,?,?, 'pending')");
+  $stmt->execute([
+    (int)$me['id'],
+    $me['name'],
+    $me['role'],
+    $title,
+    (string)($body['description'] ?? ''),
+    $placement,
+    json_encode($audience),
+    (string)($body['destinationUrl'] ?? ''),
+    (string)($body['budget'] ?? ''),
+  ]);
+  Http::json(['ok' => true, 'id' => (string)$pdo->lastInsertId()]);
+}
+
+if ($path === '/api/ads/mine' && $method === 'GET') {
+  $me = Auth::requireUser();
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("SELECT * FROM ads WHERE user_id=? ORDER BY created_at DESC LIMIT 200");
+  $stmt->execute([(int)$me['id']]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  Http::json(['ads' => array_map('LinkLearn\\Transform::ad', $rows)]);
+}
+
+if (preg_match('#^/api/ads/(\\d+)/impression$#', $path, $m) && $method === 'POST') {
+  Auth::requireUser();
+  $pdo = Db::pdo();
+  $pdo->prepare("UPDATE ads SET impressions = impressions + 1 WHERE id=? AND status='approved'")->execute([(int)$m[1]]);
+  Http::json(['ok' => true]);
+}
+
+if (preg_match('#^/api/ads/(\\d+)/click$#', $path, $m) && $method === 'POST') {
+  Auth::requireUser();
+  $pdo = Db::pdo();
+  $pdo->prepare("UPDATE ads SET clicks = clicks + 1 WHERE id=? AND status='approved'")->execute([(int)$m[1]]);
+  Http::json(['ok' => true]);
+}
+
+if ($path === '/api/admin/ads' && $method === 'GET') {
+  Auth::requireRole(['admin']);
+  $status = (string)($_GET['status'] ?? 'pending');
+  $pdo = Db::pdo();
+  $stmt = $pdo->prepare("SELECT * FROM ads WHERE status=? ORDER BY created_at DESC LIMIT 200");
+  $stmt->execute([$status]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  Http::json(['ads' => array_map('LinkLearn\\Transform::ad', $rows)]);
+}
+
+if (preg_match('#^/api/admin/ads/(\\d+)/status$#', $path, $m) && $method === 'PATCH') {
+  Auth::requireRole(['admin']);
+  $id = (int)$m[1];
+  $body = Http::jsonBody();
+  $status = (string)($body['status'] ?? '');
+  $reason = (string)($body['reason'] ?? '');
+  if (!in_array($status, ['pending', 'approved', 'rejected', 'paused'], true)) Http::json(['error' => 'invalid status'], 400);
+  $pdo = Db::pdo();
+  $pdo->prepare("UPDATE ads SET status=?, admin_note=? WHERE id=?")->execute([$status, $reason, $id]);
   Http::json(['ok' => true]);
 }
 
@@ -830,7 +1113,7 @@ if (preg_match('#^/api/conversations/(\\d+)/messages$#', $path, $m) && $method =
 if ($path === '/api/admin/users' && $method === 'GET') {
   Auth::requireRole(['admin']);
   $pdo = Db::pdo();
-  $stmt = $pdo->query("SELECT id, email, name, role, login_type AS loginType, account_status AS accountStatus, profile_completed AS profileCompleted, avatar_url AS avatar, verified_badge AS verifiedBadge, certificates_json AS certificatesJson, created_at AS createdAt, updated_at AS updatedAt FROM users ORDER BY created_at DESC LIMIT 500");
+  $stmt = $pdo->query("SELECT id, email, name, role, login_type AS loginType, account_status AS accountStatus, profile_completed AS profileCompleted, avatar_url AS avatar, verified_badge AS verifiedBadge, bio, certificates_json AS certificatesJson, created_at AS createdAt, updated_at AS updatedAt FROM users ORDER BY created_at DESC LIMIT 500");
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
   $out = array_map('LinkLearn\\Transform::adminUser', $rows);
   Http::json(['users' => $out]);

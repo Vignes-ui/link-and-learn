@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { createEvent, subscribeEvents, registerForEvent, getMyEvents } from '../../api/events';
-import { CalendarDays, Ticket, Users, CheckCircle2, Clock, PlusCircle, Mic, AlertTriangle, PartyPopper, Ban, QrCode } from 'lucide-react';
+import { CalendarDays, Ticket, Users, CheckCircle2, Clock, PlusCircle, Mic, AlertTriangle, PartyPopper, Ban, QrCode, Info } from 'lucide-react';
 
 const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Seminar', 'Webinar', 'Symposium', 'Networking', 'Hackathon', 'Other'];
 
