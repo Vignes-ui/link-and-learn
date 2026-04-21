@@ -22,6 +22,7 @@ export default function AuthPage() {
   const [name, setName] = useState('');
   const [role, setRole] = useState('student');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
   const { currentUser, refreshUser } = useAuth();
@@ -34,10 +35,18 @@ export default function AuthPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setNotice('');
     setLoading(true);
     try {
       if (isSignup) {
-        await signup(email, password, role, name);
+        const res = await signup(email, password, role, name);
+        if (res?.signup && !res.signup.loginAllowed) {
+          setNotice('Institutional account created. Await admin approval before signing in.');
+          setIsSignup(false);
+          setPassword('');
+          await refreshUser();
+          return;
+        }
       } else {
         await login(email, password);
       }
@@ -74,19 +83,26 @@ export default function AuthPage() {
         <div className="flex bg-slate-100 backdrop-blur-md p-1 rounded-xl mb-8 border border-slate-200">
           <button
             type="button"
-            onClick={() => { setIsSignup(false); setError(''); }}
+            onClick={() => { setIsSignup(false); setError(''); setNotice(''); }}
             className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-300 ${!isSignup ? 'bg-white text-primary-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
           >
             Sign In
           </button>
           <button
             type="button"
-            onClick={() => { setIsSignup(true); setError(''); }}
+            onClick={() => { setIsSignup(true); setError(''); setNotice(''); }}
             className={`flex-1 py-2.5 rounded-lg text-sm font-semibold transition-all duration-300 ${isSignup ? 'bg-white text-primary-700 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
           >
             Create Account
           </button>
         </div>
+
+        {notice && (
+          <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-4 text-sm mb-6 flex items-start animate-slide-up">
+            <Info className="w-5 h-5 mr-2 text-emerald-600 flex-shrink-0" />
+            <span>{notice}</span>
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-500/10 border border-red-500/50 text-red-200 rounded-xl p-4 text-sm mb-6 flex items-start animate-slide-up">

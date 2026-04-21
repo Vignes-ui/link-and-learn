@@ -4,6 +4,30 @@ import { createEvent, subscribeEvents, registerForEvent, getMyEvents } from '../
 import { CalendarDays, Ticket, Users, CheckCircle2, Clock, PlusCircle, Mic, AlertTriangle, PartyPopper, Ban, QrCode, Info } from 'lucide-react';
 
 const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Seminar', 'Webinar', 'Symposium', 'Networking', 'Hackathon', 'Other'];
+const EVENT_SCOPES = [
+  { value: 'organization', label: 'Organisation-wide' },
+  { value: 'department', label: 'Department event' },
+  { value: 'club', label: 'Club event' },
+];
+
+function normalizeDepartments(departments) {
+  if (!Array.isArray(departments)) return [];
+  return departments
+    .map((dept) => {
+      if (typeof dept === 'string') return { name: dept, clubs: [] };
+      return {
+        name: dept?.name || '',
+        clubs: Array.isArray(dept?.clubs) ? dept.clubs : [],
+      };
+    })
+    .filter((dept) => dept.name);
+}
+
+function eventScopeLabel(evt) {
+  if (evt.eventScope === 'club' && evt.clubName) return `${evt.departmentName} / ${evt.clubName}`;
+  if (evt.eventScope === 'department' && evt.departmentName) return evt.departmentName;
+  return 'Organisation-wide';
+}
 
 function QRCode({ value, size = 160 }) {
   const canvasRef = useRef();
@@ -78,11 +102,15 @@ export default function EventsPage() {
   const [registering, setRegistering] = useState(false);
   const [regMsg, setRegMsg] = useState('');
 
-  const [form, setForm] = useState({ title: '', description: '', category: EVENT_CATEGORIES[0], location: '', dateTime: '', capacity: 100 });
+  const [form, setForm] = useState({ title: '', description: '', category: EVENT_CATEGORIES[0], location: '', dateTime: '', capacity: 100, eventScope: 'organization', departmentName: '', clubName: '', clubDescription: '' });
   const [posting, setPosting] = useState(false);
   const [msg, setMsg] = useState('');
 
   const canCreate = ['institution', 'govt_body', 'ngo', 'researcher', 'admin'].includes(userData?.role);
+  const isInstitutional = ['institution', 'govt_body', 'ngo', 'admin'].includes(userData?.role);
+  const departments = normalizeDepartments(userData?.departments);
+  const selectedDepartment = departments.find((dept) => dept.name === form.departmentName);
+  const availableClubs = selectedDepartment?.clubs || [];
 
   useEffect(() => {
     const unsub = subscribeEvents(setEvents);
@@ -101,7 +129,7 @@ export default function EventsPage() {
     try {
       await createEvent(currentUser.uid, userData, form);
       setMsg('✅ Event created successfully!');
-      setForm({ title: '', description: '', category: EVENT_CATEGORIES[0], location: '', dateTime: '', capacity: 100 });
+      setForm({ title: '', description: '', category: EVENT_CATEGORIES[0], location: '', dateTime: '', capacity: 100, eventScope: 'organization', departmentName: '', clubName: '', clubDescription: '' });
       setTimeout(() => setMsg(''), 5000);
     } catch { setMsg('❌ Failed to create event'); }
     finally { setPosting(false); }
@@ -134,6 +162,16 @@ export default function EventsPage() {
           <div className="p-8 sm:p-10 border-b border-slate-100 bg-white/40">
             <span className="inline-block text-xs font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 px-4 py-1.5 rounded-full border border-indigo-200 shadow-sm mb-4">{selected.category}</span>
             <h1 className="text-3xl sm:text-4xl font-display font-bold text-slate-900 mb-6 leading-tight">{selected.title}</h1>
+            <div className="flex flex-wrap gap-3 mb-6">
+              <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider bg-slate-900 text-white px-4 py-1.5 rounded-full">
+                {eventScopeLabel(selected)}
+              </span>
+              {selected.clubDescription && (
+                <span className="inline-flex items-center text-xs font-semibold text-slate-600 bg-slate-100 px-4 py-1.5 rounded-full border border-slate-200">
+                  {selected.clubDescription}
+                </span>
+              )}
+            </div>
             
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 bg-white/60 rounded-2xl p-6 border border-slate-100 shadow-sm">
               <div>
@@ -339,6 +377,16 @@ export default function EventsPage() {
                   <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path></svg>
                   <span className="truncate">{evt.organizerName}</span>
                 </p>
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider bg-slate-900 text-white px-3 py-1 rounded-full">
+                    {eventScopeLabel(evt)}
+                  </span>
+                  {evt.clubDescription && (
+                    <span className="text-[11px] font-medium text-slate-600 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                      {evt.clubDescription}
+                    </span>
+                  )}
+                </div>
                 
                 <div className="mt-auto space-y-3 pt-4 border-t border-slate-100">
                   <div className="flex items-center gap-2 text-sm font-medium text-slate-600">
@@ -397,8 +445,53 @@ export default function EventsPage() {
                 required 
               />
             </div>
+
+            {isInstitutional && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Event Scope</label>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  {EVENT_SCOPES.map(scope => (
+                    <button
+                      key={scope.value}
+                      type="button"
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        eventScope: scope.value,
+                        departmentName: scope.value === 'organization' ? '' : f.departmentName,
+                        clubName: scope.value === 'club' ? f.clubName : '',
+                        clubDescription: scope.value === 'club' ? f.clubDescription : '',
+                      }))}
+                      className={`rounded-xl border px-4 py-3 text-sm font-bold transition-all ${form.eventScope === scope.value ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600'}`}
+                    >
+                      {scope.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {isInstitutional && form.eventScope !== 'organization' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Department</label>
+                  <div className="relative">
+                    <select
+                      className="w-full appearance-none bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all cursor-pointer"
+                      value={form.departmentName}
+                      onChange={e => setForm(f => ({ ...f, departmentName: e.target.value, clubName: '', clubDescription: '' }))}
+                      required={form.eventScope !== 'organization'}
+                    >
+                      <option value="">Select department</option>
+                      {departments.map(dept => <option key={dept.name} value={dept.name}>{dept.name}</option>)}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">▼</div>
+                  </div>
+                  {departments.length === 0 && (
+                    <p className="text-xs text-amber-700">Add departments in your profile before posting department or club events.</p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Event Category</label>
                 <div className="relative">
@@ -412,6 +505,26 @@ export default function EventsPage() {
                   <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">▼</div>
                 </div>
               </div>
+              {isInstitutional && form.eventScope === 'club' && (
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Club</label>
+                  <div className="relative">
+                    <select
+                      className="w-full appearance-none bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all cursor-pointer"
+                      value={form.clubName}
+                      onChange={e => {
+                        const club = availableClubs.find(item => item.name === e.target.value);
+                        setForm(f => ({ ...f, clubName: e.target.value, clubDescription: club?.description || '' }));
+                      }}
+                      required={form.eventScope === 'club'}
+                    >
+                      <option value="">Select club</option>
+                      {availableClubs.map((club) => <option key={club.name} value={club.name}>{club.name}</option>)}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-400">▼</div>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Max Capacity</label>
                 <input 
@@ -425,6 +538,18 @@ export default function EventsPage() {
                 />
               </div>
             </div>
+
+            {isInstitutional && form.eventScope === 'club' && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Club Focus</label>
+                <input
+                  className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all"
+                  placeholder="Short club descriptor shown on the event card"
+                  value={form.clubDescription}
+                  onChange={e => setForm(f => ({ ...f, clubDescription: e.target.value }))}
+                />
+              </div>
+            )}
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
@@ -503,6 +628,7 @@ export default function EventsPage() {
                     </div>
                     <div>
                       <h3 className="font-bold text-lg text-slate-900 group-hover:text-primary-600 transition-colors">{evt.title}</h3>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">{eventScopeLabel(evt)}</p>
                       <p className="text-sm font-medium text-slate-500 mt-1">{evt.category} <span className="mx-2 opacity-50">•</span> {new Date(evt.dateTime).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</p>
                     </div>
                   </div>

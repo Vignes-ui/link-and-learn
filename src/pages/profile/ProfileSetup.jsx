@@ -8,6 +8,7 @@ export default function ProfileSetup() {
   const { currentUser, userData, refreshUser } = useAuth();
   const [name, setName] = useState(userData?.name || '');
   const [bio, setBio] = useState('');
+  const [departmentsText, setDepartmentsText] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -18,6 +19,13 @@ export default function ProfileSetup() {
       await updateProfile(currentUser.uid, {
         name,
         bio,
+        departments: isInstitutional
+          ? departmentsText
+              .split('\n')
+              .map(line => line.trim())
+              .filter(Boolean)
+              .map(name => ({ name, clubs: [] }))
+          : undefined,
         profileCompleted: true,
       });
       await refreshUser();
@@ -110,6 +118,24 @@ export default function ProfileSetup() {
                   onChange={e => setBio(e.target.value)}
                 />
               </div>
+
+              {isInstitutional && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">
+                    Departments
+                  </label>
+                  <textarea
+                    rows={4}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-all shadow-sm resize-none"
+                    placeholder={'Enter one department per line\nComputer Science\nMechanical Engineering\nCommerce'}
+                    value={departmentsText}
+                    onChange={e => setDepartmentsText(e.target.value)}
+                  />
+                  <p className="text-xs text-slate-500 mt-2">
+                    You can add clubs for each department later from your profile.
+                  </p>
+                </div>
+              )}
 
               {/* Submit button */}
               <button

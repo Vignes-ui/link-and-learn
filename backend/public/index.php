@@ -115,8 +115,12 @@ if ($path === '/api/auth/signup' && $method === 'POST') {
   $password = (string)($body['password'] ?? '');
   $role = (string)($body['role'] ?? 'student');
   $name = (string)($body['name'] ?? '');
-  Auth::signup($email, $password, $role, $name);
-  Http::json(['ok' => true, 'user' => Auth::me()]);
+  $signup = Auth::signup($email, $password, $role, $name);
+  Http::json([
+    'ok' => true,
+    'signup' => $signup,
+    'user' => $signup['loginAllowed'] ? Auth::me() : null,
+  ]);
 }
 
 if ($path === '/api/auth/login' && $method === 'POST') {
@@ -182,17 +186,19 @@ if (preg_match('#^/api/users/(\\d+)$#', $path, $m) && $method === 'GET') {
   $me = Auth::requireUser();
   $uid = (int)$m[1];
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar, bio, skills_json AS skills, education_json AS education, experience_json AS experience, publications_json AS publications, certificates_json AS certificates FROM users WHERE id=?");
+  $stmt = $pdo->prepare("SELECT id, name, email, role, avatar_url AS avatar, bio, skills_json AS skills, education_json AS education, experience_json AS experience, publications_json AS publications, certificates_json AS certificates, departments_json AS departments, verified_badge AS verifiedBadge FROM users WHERE id=?");
   $stmt->execute([$uid]);
   $u = $stmt->fetch(PDO::FETCH_ASSOC);
   if (!$u) Http::json(['error' => 'User not found'], 404);
   
   // Transform JSON fields
-  $u['skills'] = json_decode($u['skills_json'] ?? '[]', true);
-  $u['education'] = json_decode($u['education_json'] ?? '[]', true);
-  $u['experience'] = json_decode($u['experience_json'] ?? '[]', true);
-  $u['publications'] = json_decode($u['publications_json'] ?? '[]', true);
-  $u['certificates'] = json_decode($u['certificates_json'] ?? '[]', true);
+  $u['skills'] = json_decode($u['skills'] ?? '[]', true);
+  $u['education'] = json_decode($u['education'] ?? '[]', true);
+  $u['experience'] = json_decode($u['experience'] ?? '[]', true);
+  $u['publications'] = json_decode($u['publications'] ?? '[]', true);
+  $u['certificates'] = json_decode($u['certificates'] ?? '[]', true);
+  $u['departments'] = json_decode($u['departments'] ?? '[]', true);
+  $u['verifiedBadge'] = (bool)($u['verifiedBadge'] ?? false);
   
   // NOTIFICATION: Profile View
   if ($uid !== (int)$me['id']) {
@@ -505,13 +511,26 @@ if ($path === '/api/events' && $method === 'POST') {
   $body = Http::jsonBody();
   $title = trim((string)($body['title'] ?? ''));
   if ($title === '') Http::json(['error' => 'title required'], 400);
+  $eventScope = trim((string)($body['eventScope'] ?? 'organization'));
+  if (!in_array($eventScope, ['organization', 'department', 'club'], true)) {
+    Http::json(['error' => 'invalid event scope'], 400);
+  }
+  $departmentName = trim((string)($body['departmentName'] ?? ''));
+  $clubName = trim((string)($body['clubName'] ?? ''));
+  $clubDescription = trim((string)($body['clubDescription'] ?? ''));
+  if ($eventScope === 'department' && $departmentName === '') Http::json(['error' => 'department name required'], 400);
+  if ($eventScope === 'club' && ($departmentName === '' || $clubName === '')) Http::json(['error' => 'department and club required'], 400);
   $pdo = Db::pdo();
-  $stmt = $pdo->prepare("INSERT INTO events (user_id, organizer_name, title, description, category, location, date_time, capacity, status) VALUES (?,?,?,?,?,?,?,?, 'upcoming')");
+  $stmt = $pdo->prepare("INSERT INTO events (user_id, organizer_name, event_scope, department_name, club_name, club_description, title, description, category, location, date_time, capacity, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,'upcoming')");
   $dt = $body['dateTime'] ?? null;
   $dateTime = $dt ? date('Y-m-d H:i:s', strtotime((string)$dt)) : null;
   $stmt->execute([
     (int)$me['id'],
     $me['name'],
+    $eventScope,
+    $departmentName !== '' ? $departmentName : null,
+    $clubName !== '' ? $clubName : null,
+    $clubDescription !== '' ? $clubDescription : null,
     $title,
     (string)($body['description'] ?? ''),
     (string)($body['category'] ?? ''),
