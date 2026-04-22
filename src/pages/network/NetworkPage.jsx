@@ -53,7 +53,7 @@ export default function NetworkPage() {
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: 'sent_pending' } : u));
       fetchConnections();
     } catch (err) {
-      alert('Failed to send connection request');
+      alert(err?.message || 'Failed to send connection request');
     }
   };
 
@@ -64,7 +64,7 @@ export default function NetworkPage() {
       // Also update search results if any
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: status } : u));
     } catch (err) {
-      alert('Failed to respond to request');
+      alert(err?.message || 'Failed to respond to request');
     }
   };
 
@@ -75,7 +75,7 @@ export default function NetworkPage() {
       fetchConnections();
       setSearchResults(prev => prev.map(u => u.id === userId ? { ...u, connectionStatus: null } : u));
     } catch (err) {
-      alert('Failed to remove connection');
+      alert(err?.message || 'Failed to remove connection');
     }
   };
 

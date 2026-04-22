@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { createEvent, subscribeEvents, registerForEvent, getMyEvents } from '../../api/events';
-import { CalendarDays, Ticket, Users, CheckCircle2, Clock, PlusCircle, Mic, AlertTriangle, PartyPopper, Ban, QrCode, Info } from 'lucide-react';
+import { createEvent, subscribeEvents, registerForEvent, getMyEvents, getMyRegistrations, updateEvent, deleteEvent } from '../../api/events';
+import { CalendarDays, Ticket, Users, CheckCircle2, Clock, PlusCircle, Mic, AlertTriangle, PartyPopper, Ban, QrCode, Info, Pencil, Trash2 } from 'lucide-react';
+import QRCodeGenerator from 'qrcode';
 
 const EVENT_CATEGORIES = ['Conference', 'Workshop', 'Seminar', 'Webinar', 'Symposium', 'Networking', 'Hackathon', 'Other'];
 const EVENT_SCOPES = [
@@ -29,78 +30,51 @@ function eventScopeLabel(evt) {
   return 'Organisation-wide';
 }
 
+function toDatetimeLocal(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 function QRCode({ value, size = 160 }) {
   const canvasRef = useRef();
 
   useEffect(() => {
     if (!canvasRef.current || !value) return;
-    const ctx = canvasRef.current.getContext('2d');
-    const cells = 21;
-    const cell = size / cells;
-    
-    // Smooth edges and rounded QR for premium feel
-    ctx.clearRect(0, 0, size, size);
-    
-    // Background with slight transparency
-    ctx.fillStyle = 'rgba(255, 255, 255, 0)';
-    ctx.fillRect(0, 0, size, size);
 
-    // Simple pattern based on value hash
-    const hash = value.split('').reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xFFFFFF, 0);
-    
-    // We will draw rounded rects
-    const drawRoundedRect = (x, y, w, h, r, fill) => {
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.lineTo(x + w - r, y);
-      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-      ctx.lineTo(x + w, y + h - r);
-      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-      ctx.lineTo(x + r, y + h);
-      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-      ctx.lineTo(x, y + r);
-      ctx.quadraticCurveTo(x, y, x + r, y);
-      ctx.closePath();
-      ctx.fillStyle = fill;
-      ctx.fill();
-    };
-
-    const qrColor = '#1e293b'; // slate-800
-    
-    for (let r = 0; r < cells; r++) {
-      for (let c = 0; c < cells; c++) {
-        const isFinderPattern =
-          (r < 7 && c < 7) || (r < 7 && c >= cells - 7) || (r >= cells - 7 && c < 7);
-        if (isFinderPattern) {
-          const inBorder = r === 0 || r === 6 || r === cells-7 || r === cells-1 || c === 0 || c === 6 || c === cells-7 || c === cells-1;
-          const inInner = (r >= 2 && r <= 4 && c >= 2 && c <= 4) || (r >= 2 && r <= 4 && c >= cells-5 && c <= cells-3) || (r >= cells-5 && r <= cells-3 && c >= 2 && c <= 4);
-          
-          if (inBorder || inInner) {
-             drawRoundedRect(c * cell, r * cell, cell + 0.5, cell + 0.5, 0, qrColor); // Use 0 radius to keep finders solid
-          }
-        } else {
-          const bit = (hash >> ((r * cells + c) % 24)) & 1;
-          if (bit) {
-             // Draw individual dots with a slight border radius
-             drawRoundedRect(c * cell + 0.5, r * cell + 0.5, cell - 1, cell - 1, cell * 0.4, qrColor);
-          }
-        }
-      }
-    }
+    QRCodeGenerator.toCanvas(canvasRef.current, value, {
+      width: size,
+      margin: 4,
+      errorCorrectionLevel: 'H',
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff',
+      },
+    }).catch((err) => {
+      console.error('QR generation failed', err);
+    });
   }, [value, size]);
 
-  return <canvas ref={canvasRef} width={size} height={size} className="mx-auto" />;
+  return <canvas ref={canvasRef} width={size} height={size} className="mx-auto bg-white" aria-label={`QR ticket ${value}`} />;
 }
 
 export default function EventsPage() {
   const { currentUser, userData } = useAuth();
   const [events, setEvents] = useState([]);
   const [myEvents, setMyEvents] = useState([]);
+  const [registeredEvents, setRegisteredEvents] = useState([]);
   const [view, setView] = useState('browse');
   const [selected, setSelected] = useState(null);
   const [ticket, setTicket] = useState('');
   const [registering, setRegistering] = useState(false);
   const [regMsg, setRegMsg] = useState('');
+  const [confirmEvent, setConfirmEvent] = useState(null);
+  const [editingEvent, setEditingEvent] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingEvent, setDeletingEvent] = useState(false);
 
   const [form, setForm] = useState({ title: '', description: '', category: EVENT_CATEGORIES[0], location: '', dateTime: '', capacity: 100, eventScope: 'organization', departmentName: '', clubName: '', clubDescription: '' });
   const [posting, setPosting] = useState(false);
@@ -123,6 +97,12 @@ export default function EventsPage() {
     }
   }, [view, canCreate]);
 
+  useEffect(() => {
+    if (view === 'registered') {
+      getMyRegistrations().then(setRegisteredEvents);
+    }
+  }, [view]);
+
   const handleCreate = async (e) => {
     e.preventDefault();
     setPosting(true); setMsg('');
@@ -135,7 +115,12 @@ export default function EventsPage() {
     finally { setPosting(false); }
   };
 
+  const requestRegister = () => {
+    setConfirmEvent(selected);
+  };
+
   const handleRegister = async (eventId) => {
+    setConfirmEvent(null);
     setRegistering(true); setRegMsg(''); setTicket('');
     try {
       const ticketId = await registerForEvent(eventId, { uid: currentUser.uid, name: userData.name, email: userData.email });
@@ -145,12 +130,94 @@ export default function EventsPage() {
     finally { setRegistering(false); }
   };
 
+  const getCurrentUserTicket = (evt) => {
+    if (evt?.userTicketId) return evt.userTicketId;
+    const attendee = (evt?.attendees || []).find((item) => String(item.uid) === String(currentUser.uid));
+    return attendee?.ticketId || '';
+  };
+
+  const openEvent = (evt) => {
+    setSelected(evt);
+    setTicket(getCurrentUserTicket(evt));
+    setRegMsg('');
+    setConfirmEvent(null);
+  };
+
+  const mergeEvent = (updated) => {
+    setEvents(prev => prev.map(evt => evt.id === updated.id ? { ...evt, ...updated } : evt));
+    setMyEvents(prev => prev.map(evt => evt.id === updated.id ? { ...evt, ...updated } : evt));
+    setRegisteredEvents(prev => prev.map(evt => evt.id === updated.id ? { ...evt, ...updated } : evt));
+    setSelected(prev => prev?.id === updated.id ? { ...prev, ...updated } : prev);
+  };
+
+  const removeEvent = (eventId) => {
+    setEvents(prev => prev.filter(evt => evt.id !== eventId));
+    setMyEvents(prev => prev.filter(evt => evt.id !== eventId));
+    setRegisteredEvents(prev => prev.filter(evt => evt.id !== eventId));
+  };
+
+  const startEditEvent = () => {
+    if (!selected) return;
+    setEditingEvent(selected);
+    setEditForm({
+      title: selected.title || '',
+      description: selected.description || '',
+      category: selected.category || EVENT_CATEGORIES[0],
+      location: selected.location || '',
+      dateTime: toDatetimeLocal(selected.dateTime),
+      capacity: selected.capacity || 1,
+      eventScope: selected.eventScope || 'organization',
+      departmentName: selected.departmentName || '',
+      clubName: selected.clubName || '',
+      clubDescription: selected.clubDescription || '',
+    });
+  };
+
+  const handleUpdateEvent = async (e) => {
+    e.preventDefault();
+    if (!editingEvent || !editForm) return;
+    setSavingEdit(true);
+    try {
+      const { event } = await updateEvent(editingEvent.id, editForm);
+      mergeEvent(event);
+      setEditingEvent(null);
+      setEditForm(null);
+      setRegMsg('✅ Event updated successfully.');
+    } catch (err) {
+      setRegMsg('❌ ' + (err?.message || 'Failed to update event'));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!selected || deletingEvent) return;
+    const ok = window.confirm(`Delete "${selected.title}"? This will remove the event and all registrations.`);
+    if (!ok) return;
+    setDeletingEvent(true);
+    try {
+      await deleteEvent(selected.id);
+      removeEvent(selected.id);
+      setSelected(null);
+      setTicket('');
+      setRegMsg('');
+      setConfirmEvent(null);
+      setEditingEvent(null);
+      setEditForm(null);
+    } catch (err) {
+      setRegMsg('❌ ' + (err?.message || 'Failed to delete event'));
+    } finally {
+      setDeletingEvent(false);
+    }
+  };
+
   if (selected) {
     const isFull = selected.registeredCount >= selected.capacity;
+    const isHost = selected.uid === currentUser.uid;
 
     return (
       <div className="max-w-4xl mx-auto animate-fade-in pb-12">
-        <button onClick={() => { setSelected(null); setTicket(''); setRegMsg(''); }} className="group flex items-center gap-2 text-slate-500 hover:text-primary-600 font-semibold mb-6 transition-colors">
+        <button onClick={() => { setSelected(null); setTicket(''); setRegMsg(''); setConfirmEvent(null); }} className="group flex items-center gap-2 text-slate-500 hover:text-primary-600 font-semibold mb-6 transition-colors">
           <svg className="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
           Back to Events
         </button>
@@ -162,6 +229,25 @@ export default function EventsPage() {
           <div className="p-8 sm:p-10 border-b border-slate-100 bg-white/40">
             <span className="inline-block text-xs font-bold uppercase tracking-wider bg-indigo-100 text-indigo-700 px-4 py-1.5 rounded-full border border-indigo-200 shadow-sm mb-4">{selected.category}</span>
             <h1 className="text-3xl sm:text-4xl font-display font-bold text-slate-900 mb-6 leading-tight">{selected.title}</h1>
+            {isHost && (
+              <div className="flex flex-wrap gap-3 mb-6">
+                <button
+                  type="button"
+                  onClick={startEditEvent}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-indigo-700 border border-indigo-200 shadow-sm hover:bg-indigo-50 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" /> Edit Event
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteEvent}
+                  disabled={deletingEvent}
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-bold text-red-600 border border-red-200 shadow-sm hover:bg-red-50 disabled:opacity-50 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" /> {deletingEvent ? 'Deleting...' : 'Delete Event'}
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-3 mb-6">
               <span className="inline-flex items-center text-xs font-bold uppercase tracking-wider bg-slate-900 text-white px-4 py-1.5 rounded-full">
                 {eventScopeLabel(selected)}
@@ -244,10 +330,10 @@ export default function EventsPage() {
               </div>
             )}
 
-            {!ticket && (
+            {!ticket && !isHost && (
               <div className="pt-4 border-t border-slate-200">
                 <button
-                  onClick={() => handleRegister(selected.id)}
+                  onClick={requestRegister}
                   disabled={registering || isFull}
                   className={`w-full sm:w-auto px-10 py-4 rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-3 ${isFull ? 'bg-slate-100 text-slate-500 cursor-not-allowed border border-slate-200 shadow-none' : 'bg-primary-600 text-white hover:bg-primary-700 hover:shadow-lg disabled:opacity-50'}`}
                 >
@@ -262,7 +348,148 @@ export default function EventsPage() {
               </div>
             )}
 
-            {selected.uid === currentUser.uid && (
+            {confirmEvent && !isHost && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 backdrop-blur-sm">
+                <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-fade-in">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center flex-shrink-0 border border-primary-100">
+                      <Ticket className="w-6 h-6" />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-xl font-display font-bold text-slate-900">Confirm reservation</h3>
+                      <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+                        Reserve a seat for <span className="font-bold text-slate-900">{confirmEvent.title}</span>?
+                      </p>
+                      <div className="mt-4 rounded-xl bg-slate-50 border border-slate-200 p-3 text-sm text-slate-700 space-y-1">
+                        <p className="font-semibold">{new Date(confirmEvent.dateTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                        <p className="text-slate-500">{confirmEvent.location}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmEvent(null)}
+                      disabled={registering}
+                      className="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRegister(confirmEvent.id)}
+                      disabled={registering}
+                      className="px-5 py-2.5 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-md flex items-center justify-center gap-2"
+                    >
+                      {registering ? 'Reserving...' : 'Confirm & Reserve'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {editingEvent && editForm && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm overflow-y-auto">
+                <form onSubmit={handleUpdateEvent} className="w-full max-w-2xl rounded-2xl bg-white p-6 shadow-2xl border border-slate-200 animate-fade-in my-auto">
+                  <div className="flex items-start justify-between gap-4 mb-6">
+                    <div>
+                      <h3 className="text-2xl font-display font-bold text-slate-900">Edit event</h3>
+                      <p className="text-sm text-slate-500 mt-1">Update event details shown to attendees.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingEvent(null); setEditForm(null); }}
+                      disabled={savingEdit}
+                      className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 disabled:opacity-50"
+                    >
+                      Close
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Event Title</label>
+                      <input
+                        className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all"
+                        value={editForm.title}
+                        onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Category</label>
+                      <select
+                        className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all"
+                        value={editForm.category}
+                        onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                      >
+                        {EVENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Capacity</label>
+                      <input
+                        type="number"
+                        min={selected.registeredCount || 1}
+                        className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all"
+                        value={editForm.capacity}
+                        onChange={e => setEditForm(f => ({ ...f, capacity: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Location / Venue</label>
+                      <input
+                        className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all"
+                        value={editForm.location}
+                        onChange={e => setEditForm(f => ({ ...f, location: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Date & Time</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all"
+                        value={editForm.dateTime}
+                        onChange={e => setEditForm(f => ({ ...f, dateTime: e.target.value }))}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Description</label>
+                      <textarea
+                        className="w-full bg-white border border-slate-200 p-3.5 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm transition-all resize-none"
+                        rows={5}
+                        value={editForm.description}
+                        onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-col-reverse sm:flex-row sm:justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setEditingEvent(null); setEditForm(null); }}
+                      disabled={savingEdit}
+                      className="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={savingEdit}
+                      className="px-5 py-2.5 rounded-xl font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 transition-colors shadow-md"
+                    >
+                      {savingEdit ? 'Saving...' : 'Save Changes'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {isHost && (
               <div className="pt-8 border-t border-slate-200">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-display font-bold text-slate-900 flex items-center gap-2">
@@ -322,6 +549,12 @@ export default function EventsPage() {
           >
             Browse Events
           </button>
+          <button 
+            onClick={() => setView('registered')} 
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${view === 'registered' ? 'bg-white text-slate-900 shadow-md' : 'text-white hover:bg-white/20'}`}
+          >
+            My Registered
+          </button>
           {canCreate && (
             <button 
               onClick={() => setView('create')} 
@@ -356,7 +589,7 @@ export default function EventsPage() {
             {events.map((evt, idx) => (
               <div 
                 key={evt.id} 
-                onClick={() => setSelected(evt)} 
+                onClick={() => openEvent(evt)} 
                 className="glass-panel rounded-[2rem] p-6 cursor-pointer hover:-translate-y-1.5 hover:shadow-xl transition-all duration-300 border border-white/60 group relative overflow-hidden flex flex-col"
                 style={{ animationDelay: `${idx * 50}ms` }}
               >
@@ -618,7 +851,7 @@ export default function EventsPage() {
               {myEvents.map((evt, idx) => (
                 <div 
                   key={evt.id} 
-                  onClick={() => setSelected(evt)} 
+                  onClick={() => openEvent(evt)} 
                   className="glass-panel rounded-2xl p-5 sm:p-6 cursor-pointer hover:shadow-md transition-all border border-white/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
                   style={{ animationDelay: `${idx * 50}ms` }}
                 >
@@ -639,6 +872,51 @@ export default function EventsPage() {
                     </div>
                     <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border shadow-sm ${evt.status === 'active' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
                       {evt.status}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === 'registered' && (
+        <div className="space-y-4 animate-slide-up">
+          {registeredEvents.length === 0 ? (
+            <div className="text-center py-20 glass-panel rounded-[2rem] border border-white/60">
+              <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 border border-slate-200">
+                <Ticket className="w-8 h-8 text-slate-400" />
+              </div>
+              <p className="text-lg font-bold text-slate-700">No registered events yet.</p>
+              <button onClick={() => setView('browse')} className="mt-4 text-primary-600 font-semibold hover:underline">Browse events</button>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {registeredEvents.map((evt, idx) => (
+                <div
+                  key={evt.id}
+                  onClick={() => openEvent(evt)}
+                  className="glass-panel rounded-2xl p-5 sm:p-6 cursor-pointer hover:shadow-md transition-all border border-white/60 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group"
+                  style={{ animationDelay: `${idx * 50}ms` }}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center text-xl shadow-sm border border-primary-100 group-hover:scale-110 transition-transform flex-shrink-0">
+                      <Ticket className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-slate-900 group-hover:text-primary-600 transition-colors">{evt.title}</h3>
+                      <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">{eventScopeLabel(evt)}</p>
+                      <p className="text-sm font-medium text-slate-500 mt-1">{evt.category} <span className="mx-2 opacity-50">â€¢</span> {new Date(evt.dateTime).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center sm:flex-col sm:items-end justify-between sm:justify-center gap-3 pl-16 sm:pl-0 border-t sm:border-t-0 border-slate-100 pt-3 sm:pt-0">
+                    <div className="flex items-center gap-2 bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-100">
+                      <Ticket className="w-4 h-4 text-primary-600" />
+                      <span className="text-xs font-mono font-bold text-primary-700">{evt.userTicketId}</span>
+                    </div>
+                    <span className="text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full border shadow-sm bg-emerald-100 text-emerald-700 border-emerald-200">
+                      Registered
                     </span>
                   </div>
                 </div>

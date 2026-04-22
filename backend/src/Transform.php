@@ -43,6 +43,8 @@ final class Transform {
       'registeredCount' => (int)$row['registered_count'],
       'status' => $row['status'],
       'attendees' => self::jsonArr($row['attendees_json'] ?? null),
+      'userTicketId' => $row['user_ticket_id'] ?? null,
+      'userRegisteredAt' => isset($row['user_registered_at']) && $row['user_registered_at'] ? gmdate('c', strtotime($row['user_registered_at'])) : null,
       'createdAt' => gmdate('c', strtotime($row['created_at'])),
     ];
   }

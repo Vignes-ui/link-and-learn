@@ -3,9 +3,13 @@ namespace LinkLearn;
 
 class Notification {
     public static function send(int $userId, ?int $fromUserId, string $type, string $message, ?int $relatedId = null): void {
-        $pdo = Db::pdo();
-        $stmt = $pdo->prepare("INSERT INTO notifications (user_id, from_user_id, type, message, related_id) VALUES (?,?,?,?,?)");
-        $stmt->execute([$userId, $fromUserId, $type, $message, $relatedId]);
+        try {
+            $pdo = Db::pdo();
+            $stmt = $pdo->prepare("INSERT INTO notifications (user_id, from_user_id, type, message, related_id) VALUES (?,?,?,?,?)");
+            $stmt->execute([$userId, $fromUserId, $type, $message, $relatedId]);
+        } catch (\Throwable $e) {
+            error_log('Notification send failed: ' . $e->getMessage());
+        }
     }
 
     public static function getForUser(int $userId, int $limit = 50): array {

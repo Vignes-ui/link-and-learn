@@ -7,6 +7,7 @@
 ### Setup
 1. Create a database (example: `linklearn`) and import:
    - `backend/sql/001_init.sql`
+   - then import the remaining numbered files in order (`002_connections.sql`, `003_notifications.sql`, etc., through `007_requirement_quotes.sql`)
 2. Copy env template:
    - `backend/.env.example` → `backend/.env`
 3. Start the API server:

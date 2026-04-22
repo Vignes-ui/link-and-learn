@@ -4,6 +4,14 @@ export const createEvent = async (_uidIgnored, _userDataIgnored, event) => {
   return apiFetch('/api/events', { method: 'POST', body: event });
 };
 
+export const updateEvent = async (eventId, event) => {
+  return apiFetch(`/api/events/${eventId}`, { method: 'PATCH', body: event });
+};
+
+export const deleteEvent = async (eventId) => {
+  return apiFetch(`/api/events/${eventId}`, { method: 'DELETE' });
+};
+
 export const subscribeEvents = (callback) => {
   return poll(async () => {
     const { events } = await apiFetch('/api/events');

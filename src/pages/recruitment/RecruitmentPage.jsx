@@ -24,6 +24,33 @@ export default function RecruitmentPage() {
   const canPost = CAN_POST.includes(userData?.role);
   const canApply = CAN_APPLY.includes(userData?.role);
 
+  const hasApplied = (vacancy) => {
+    return (vacancy?.applicants || []).some(a => String(a.uid) === String(currentUser.uid));
+  };
+
+  const canApplyToVacancy = (vacancy) => {
+    return canApply && vacancy?.status === 'open' && String(vacancy.uid) !== String(currentUser.uid);
+  };
+
+  const markVacancyApplied = (vacancyId) => {
+    const applicant = {
+      uid: String(currentUser.uid),
+      name: userData.name,
+      email: userData.email,
+      role: userData.role,
+      status: 'applied',
+      appliedAt: new Date().toISOString(),
+    };
+    const addApplicant = (vacancy) => {
+      if (String(vacancy.id) !== String(vacancyId)) return vacancy;
+      if ((vacancy.applicants || []).some(a => String(a.uid) === String(currentUser.uid))) return vacancy;
+      return { ...vacancy, applicants: [...(vacancy.applicants || []), applicant] };
+    };
+    setVacancies(prev => prev.map(addApplicant));
+    setMyVacancies(prev => prev.map(addApplicant));
+    setSelected(prev => prev && String(prev.id) === String(vacancyId) ? addApplicant(prev) : prev);
+  };
+
   useEffect(() => {
     const unsub = subscribeVacancies(setVacancies);
     return () => unsub();
@@ -51,13 +78,14 @@ export default function RecruitmentPage() {
     setApplying(true); setApplyMsg('');
     try {
       await applyForVacancy(vacancyId, { uid: currentUser.uid, name: userData.name, email: userData.email, role: userData.role });
+      markVacancyApplied(vacancyId);
       setApplyMsg('✅ Application submitted successfully!');
     } catch (e) { setApplyMsg('❌ ' + e.message); }
     finally { setApplying(false); }
   };
 
   if (selected) {
-    const alreadyApplied = selected.applicants?.some(a => a.uid === currentUser.uid);
+    const alreadyApplied = hasApplied(selected);
     return (
       <div className="max-w-4xl mx-auto animate-fade-in pb-12">
         <button onClick={() => { setSelected(null); setApplyMsg(''); }} className="group flex items-center gap-2 text-slate-500 hover:text-primary-600 font-semibold mb-6 transition-colors">
@@ -108,7 +136,7 @@ export default function RecruitmentPage() {
               </div>
             )}
             
-            {canApply && selected.status === 'open' && (
+            {canApplyToVacancy(selected) && (
               <div className="pt-4 border-t border-slate-200">
                 <button
                   onClick={() => handleApply(selected.id)}
@@ -251,13 +279,28 @@ export default function RecruitmentPage() {
                     {v.description}
                   </p>
                   
-                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between mt-auto">
+                  <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-auto">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                       {new Date(v.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                     </div>
-                    <div className="text-sm font-bold text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-100 group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                      {v.applicants?.length || 0} Applied
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold text-primary-600 bg-primary-50 px-3 py-1.5 rounded-lg border border-primary-100">
+                        {v.applicants?.length || 0} Applied
+                      </span>
+                      {canApplyToVacancy(v) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleApply(v.id);
+                          }}
+                          disabled={applying || hasApplied(v)}
+                          className={`px-3 py-1.5 rounded-lg text-sm font-bold transition-colors flex items-center gap-1.5 ${hasApplied(v) ? 'bg-emerald-100 text-emerald-700 border border-emerald-200 cursor-not-allowed' : 'bg-primary-600 text-white hover:bg-primary-700 shadow-sm disabled:opacity-50'}`}
+                        >
+                          {hasApplied(v) ? <><CheckCircle2 className="w-4 h-4" /> Applied</> : <><Send className="w-4 h-4" /> Apply</>}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

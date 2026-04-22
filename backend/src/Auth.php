@@ -202,12 +202,20 @@ final class Auth {
     $u1 = min($a, $b);
     $u2 = max($a, $b);
     $pdo = Db::pdo();
-    $stmt = $pdo->prepare("SELECT id FROM conversations WHERE user1_id=? AND user2_id=?");
-    $stmt->execute([$u1, $u2]);
-    $id = $stmt->fetchColumn();
+    $id = self::getConversationId($a, $b);
     if ($id) return (int)$id;
     $pdo->prepare("INSERT INTO conversations (user1_id, user2_id, created_at) VALUES (?,?, NOW())")->execute([$u1, $u2]);
     return (int)$pdo->lastInsertId();
+  }
+
+  public static function getConversationId(int $a, int $b): ?int {
+    $u1 = min($a, $b);
+    $u2 = max($a, $b);
+    $pdo = Db::pdo();
+    $stmt = $pdo->prepare("SELECT id FROM conversations WHERE user1_id=? AND user2_id=?");
+    $stmt->execute([$u1, $u2]);
+    $id = $stmt->fetchColumn();
+    return $id ? (int)$id : null;
   }
 
   public static function areConnected(int $u1, int $u2): bool {
@@ -223,14 +231,15 @@ final class Auth {
     $u1 = min($me, $other);
     $u2 = max($me, $other);
     $pdo = Db::pdo();
-    $stmt = $pdo->prepare("SELECT status, user_id_1 FROM user_connections WHERE user_id_1=? AND user_id_2=?");
+    $requesterSelect = self::hasConnectionRequesterColumn() ? ', requester_user_id' : '';
+    $stmt = $pdo->prepare("SELECT status, user_id_1{$requesterSelect} FROM user_connections WHERE user_id_1=? AND user_id_2=?");
     $stmt->execute([$u1, $u2]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) return null;
     
-    // If it's pending, we need to know who sent it
     if ($row['status'] === 'pending') {
-      return $row['user_id_1'] === $me ? 'sent_pending' : 'received_pending';
+      $requester = (int)($row['requester_user_id'] ?? $row['user_id_1']);
+      return $requester === $me ? 'sent_pending' : 'received_pending';
     }
     return $row['status'];
   }
@@ -240,8 +249,30 @@ final class Auth {
     $u1 = min($me, $other);
     $u2 = max($me, $other);
     $pdo = Db::pdo();
-    $pdo->prepare("INSERT INTO user_connections (user_id_1, user_id_2, status) VALUES (?,?, 'pending') ON DUPLICATE KEY UPDATE status='pending'")
-        ->execute([$u1, $u2]);
+
+    $target = $pdo->prepare("SELECT 1 FROM users WHERE id=? AND account_status='active'");
+    $target->execute([$other]);
+    if (!$target->fetchColumn()) Http::json(['error' => 'User not found or inactive'], 404);
+
+    $existing = $pdo->prepare("SELECT status FROM user_connections WHERE user_id_1=? AND user_id_2=?");
+    $existing->execute([$u1, $u2]);
+    $status = $existing->fetchColumn();
+    if ($status === 'accepted') return;
+
+    if (self::hasConnectionRequesterColumn()) {
+      $pdo->prepare("
+        INSERT INTO user_connections (user_id_1, user_id_2, requester_user_id, status)
+        VALUES (?,?,?, 'pending')
+        ON DUPLICATE KEY UPDATE requester_user_id=VALUES(requester_user_id), status='pending'
+      ")->execute([$u1, $u2, $me]);
+      return;
+    }
+
+    $pdo->prepare("
+      INSERT INTO user_connections (user_id_1, user_id_2, status)
+      VALUES (?,?, 'pending')
+      ON DUPLICATE KEY UPDATE status='pending'
+    ")->execute([$u1, $u2]);
   }
 
   public static function respondConnection(int $me, int $other, string $status): void {
@@ -259,6 +290,24 @@ final class Auth {
     $pdo = Db::pdo();
     $pdo->prepare("DELETE FROM user_connections WHERE user_id_1=? AND user_id_2=?")
         ->execute([$u1, $u2]);
+  }
+
+  private static function hasConnectionRequesterColumn(): bool {
+    static $hasColumn = null;
+    if ($hasColumn !== null) return $hasColumn;
+
+    $pdo = Db::pdo();
+    $stmt = $pdo->prepare("
+      SELECT 1
+      FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'user_connections'
+        AND COLUMN_NAME = 'requester_user_id'
+      LIMIT 1
+    ");
+    $stmt->execute();
+    $hasColumn = (bool)$stmt->fetchColumn();
+    return $hasColumn;
   }
 
 

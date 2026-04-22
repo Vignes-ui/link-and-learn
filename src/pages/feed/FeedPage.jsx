@@ -15,9 +15,16 @@ export default function FeedPage() {
   const [imageFile, setImageFile] = useState(null);
   const [posting, setPosting] = useState(false);
   const [commentText, setCommentText] = useState({});
+  const [replyTarget, setReplyTarget] = useState({});
   const [openComments, setOpenComments] = useState({});
   const [myConnections, setMyConnections] = useState([]);
+  const [now, setNow] = useState(Date.now());
   const seenAdIds = useRef(new Set());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const unsub = subscribeFeed(setPosts);
@@ -47,9 +54,16 @@ export default function FeedPage() {
   const handleConnect = async (userId) => {
     try {
       await requestConnection(userId);
+      setMyConnections(prev => {
+        const id = String(userId);
+        if (prev.some(c => c.id === id)) {
+          return prev.map(c => c.id === id ? { ...c, status: 'sent_pending' } : c);
+        }
+        return [...prev, { id, status: 'sent_pending' }];
+      });
       fetchConnections();
     } catch (err) {
-      alert('Failed to connect');
+      alert(err?.message || 'Failed to connect');
     }
   };
 
@@ -86,14 +100,93 @@ export default function FeedPage() {
     }
   };
 
-  const timeAgo = (ts) => {
-    if (!ts) return '';
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    const secs = Math.floor((Date.now() - d) / 1000);
+  const getAuthorId = (post) => {
+    const rawId = post.authorId ?? post.user_id ?? post.uid;
+    return rawId ? String(rawId) : '';
+  };
+
+  const timeAgo = (ts, ageSeconds, fetchedAt) => {
+    let secs;
+    if (Number.isFinite(ageSeconds) && fetchedAt) {
+      secs = Math.floor(ageSeconds + ((now - fetchedAt) / 1000));
+    } else {
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      secs = Math.floor((now - d) / 1000);
+    }
+    secs = Math.max(0, secs);
     if (secs < 60) return 'just now';
     if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
     if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
     return Math.floor(secs / 86400) + 'd ago';
+  };
+
+  const handleCommentSubmit = async (postId) => {
+    const text = (commentText[postId] || '').trim();
+    if (!text) return;
+    const parentId = replyTarget[postId]?.id || null;
+    try {
+      await addComment(postId, currentUser.uid, userData.name, text, parentId);
+      setCommentText(p => ({ ...p, [postId]: '' }));
+      setReplyTarget(p => {
+        const next = { ...p };
+        delete next[postId];
+        return next;
+      });
+    } catch (err) {
+      alert(err?.message || 'Failed to post comment');
+    }
+  };
+
+  const startReply = (postId, comment) => {
+    if (!comment?.id) return;
+    setReplyTarget(p => ({ ...p, [postId]: comment }));
+    setOpenComments(p => ({ ...p, [postId]: true }));
+  };
+
+  const clearReply = (postId) => {
+    setReplyTarget(p => {
+      const next = { ...p };
+      delete next[postId];
+      return next;
+    });
+  };
+
+  const renderCommentThread = (comment, allComments, postId, depth = 0) => {
+    const commentId = comment.id ? String(comment.id) : '';
+    const replies = commentId
+      ? allComments.filter(item => item.parentId && String(item.parentId) === commentId)
+      : [];
+    const indent = depth > 0 ? Math.min(depth, 3) * 18 : 0;
+
+    return (
+      <div key={commentId || `${comment.uid}-${comment.createdAt}-${depth}`} className="space-y-2" style={{ marginLeft: indent }}>
+        <div className="bg-white border border-slate-200 shadow-sm rounded-xl p-3.5 flex gap-3">
+          <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(comment.authorName || 'User')}&background=e2e8f0&color=475569&size=32`} className="w-8 h-8 rounded-full flex-shrink-0" alt="" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="text-xs font-bold text-slate-900">{comment.authorName}</p>
+              {comment.createdAt && <span className="text-[11px] font-medium text-slate-400">{timeAgo(comment.createdAt)}</span>}
+            </div>
+            <p className="text-sm text-slate-700 mt-1 leading-snug break-words">{comment.text}</p>
+            {commentId && (
+              <button
+                type="button"
+                onClick={() => startReply(postId, comment)}
+                className="mt-2 text-xs font-bold text-primary-600 hover:text-primary-700"
+              >
+                Reply
+              </button>
+            )}
+          </div>
+        </div>
+        {replies.length > 0 && (
+          <div className="space-y-2 border-l-2 border-slate-200 pl-3">
+            {replies.map(reply => renderCommentThread(reply, allComments, postId, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -176,36 +269,42 @@ export default function FeedPage() {
 
         {posts.map((post, idx) => {
           const liked = post.likes?.includes(currentUser.uid);
+          const authorId = getAuthorId(post);
+          const isOwnPost = authorId === currentUser.uid;
+          const connection = myConnections.find(c => c.id === authorId);
+          const comments = post.comments || [];
+          const rootComments = comments.filter(comment => !comment.parentId);
+          const activeReply = replyTarget[post.id];
           return (
             <div key={post.id} className="glass-panel rounded-[2rem] shadow-sm p-6 sm:p-8 border border-white/60 hover:shadow-md transition-shadow animate-slide-up" style={{ animationDelay: `${idx * 100}ms` }}>
               {/* Post Header */}
               <div className="flex items-start justify-between mb-4">
                 <div 
                   className="flex items-center gap-4 group cursor-pointer"
-                  onClick={() => navigate(`/profile/${post.user_id || post.uid}`)}
+                  onClick={() => authorId && navigate(`/profile/${authorId}`)}
                 >
                   <img
-                    src={`https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName || 'U')}&background=3b82f6&color=fff&size=56`}
-                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full flex-shrink-0 shadow-sm border border-slate-100 group-hover:ring-2 ring-primary-500 transition-all"
+                    src={post.authorAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName || 'U')}&background=3b82f6&color=fff&size=56`}
+                    className="w-12 h-12 sm:w-14 sm:h-14 rounded-full object-cover flex-shrink-0 shadow-sm border border-slate-100 group-hover:ring-2 ring-primary-500 transition-all"
                     alt=""
                   />
                   <div>
                     <p className="font-bold text-slate-900 text-lg group-hover:text-primary-600 transition-colors">{post.authorName}</p>
                     <p className="text-xs sm:text-sm font-medium text-slate-500 capitalize">
-                      {post.authorRole?.replace('_', ' ')} <span className="mx-1.5 opacity-50">•</span> {timeAgo(post.createdAt)}
+                      {post.authorRole?.replace('_', ' ')} <span className="mx-1.5 opacity-50">•</span> {timeAgo(post.createdAt, post.ageSeconds, post.fetchedAt)}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  {post.user_id !== currentUser.uid && post.uid !== currentUser.uid && (
+                  {!isOwnPost && authorId && (
                     <div className="mr-2">
-                      {myConnections.find(c => c.id === String(post.user_id || post.uid))?.status === 'accepted' ? (
+                      {connection?.status === 'accepted' ? (
                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">Connected</span>
-                      ) : myConnections.find(c => c.id === String(post.user_id || post.uid))?.status === 'sent_pending' ? (
+                      ) : connection?.status === 'sent_pending' ? (
                         <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100 flex items-center gap-1"><ClockIcon className="w-3 h-3" /> Pending</span>
                       ) : (
                         <button 
-                          onClick={() => handleConnect(post.user_id || post.uid)}
+                          onClick={() => handleConnect(authorId)}
                           className="flex items-center gap-1.5 bg-primary-50 text-primary-600 hover:bg-primary-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-primary-100 shadow-sm"
                         >
                           <UserPlus className="w-3.5 h-3.5" /> Connect
@@ -213,7 +312,7 @@ export default function FeedPage() {
                       )}
                     </div>
                   )}
-                  {(post.user_id === currentUser.uid || post.uid === currentUser.uid) ? (
+                  {isOwnPost ? (
                     <button onClick={() => deletePost(post.id)} className="w-8 h-8 flex items-center justify-center rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Delete Post">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                     </button>
@@ -225,7 +324,7 @@ export default function FeedPage() {
               <div className="pl-0 sm:pl-[72px]">
                   <div className="flex-1 min-w-0">
                     <h3 
-                      onClick={() => navigate(`/profile/${post.user_id || post.uid}`)}
+                      onClick={() => authorId && navigate(`/profile/${authorId}`)}
                       className="text-base sm:text-lg font-bold text-slate-900 leading-tight hover:text-primary-600 cursor-pointer transition-colors"
                     >
                       {post.authorName}
@@ -262,43 +361,40 @@ export default function FeedPage() {
                 {openComments[post.id] && (
                   <div className="mt-5 space-y-4 animate-fade-in bg-slate-50/50 p-4 sm:p-5 rounded-2xl border border-slate-100">
                     <div className="space-y-3">
-                      {(post.comments || []).map((c, i) => (
-                        <div key={i} className="bg-white border border-slate-200 shadow-sm rounded-xl p-3.5 flex gap-3">
-                          <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(c.authorName)}&background=e2e8f0&color=475569&size=32`} className="w-8 h-8 rounded-full flex-shrink-0" alt="" />
-                          <div>
-                            <p className="text-xs font-bold text-slate-900">{c.authorName}</p>
-                            <p className="text-sm text-slate-700 mt-1 leading-snug">{c.text}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {(post.comments || []).length === 0 && (
+                      {rootComments.map(comment => renderCommentThread(comment, comments, post.id))}
+                      {comments.length === 0 && (
                         <p className="text-center text-slate-400 text-sm font-medium py-2">No comments yet. Be the first!</p>
                       )}
                     </div>
+                    {activeReply && (
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                        <span className="truncate">Replying to {activeReply.authorName}</span>
+                        <button type="button" onClick={() => clearReply(post.id)} className="text-primary-700 hover:text-primary-900">
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                     <div className="flex gap-3 pt-2">
                       <img src={userData?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData?.name || 'U')}&background=3b82f6&color=fff&size=36`} className="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-slate-200" alt="" />
                       <div className="flex-1 flex bg-white border border-slate-200 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-transparent transition-shadow shadow-sm">
                         <input
                           className="flex-1 bg-transparent p-2.5 px-4 text-sm outline-none text-slate-800 placeholder-slate-400"
-                          placeholder="Write a comment..."
+                          placeholder={activeReply ? `Reply to ${activeReply.authorName}...` : 'Write a comment...'}
                           value={commentText[post.id] || ''}
                           onChange={e => setCommentText(p => ({ ...p, [post.id]: e.target.value }))}
                           onKeyDown={e => {
                             if (e.key === 'Enter' && commentText[post.id]?.trim()) {
-                              addComment(post.id, currentUser.uid, userData.name, commentText[post.id]);
-                              setCommentText(p => ({ ...p, [post.id]: '' }));
+                              e.preventDefault();
+                              handleCommentSubmit(post.id);
                             }
                           }}
                         />
                         <button
                           disabled={!commentText[post.id]?.trim()}
-                          onClick={() => {
-                            addComment(post.id, currentUser.uid, userData.name, commentText[post.id]);
-                            setCommentText(p => ({ ...p, [post.id]: '' }));
-                          }}
+                          onClick={() => handleCommentSubmit(post.id)}
                           className="px-4 font-semibold text-primary-600 hover:bg-primary-50 disabled:opacity-50 transition-colors"
                         >
-                          Post
+                          {activeReply ? 'Reply' : 'Post'}
                         </button>
                       </div>
                     </div>

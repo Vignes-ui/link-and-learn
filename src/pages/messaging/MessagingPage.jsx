@@ -7,7 +7,7 @@ import { getUserById } from '../../api/profile';
 import { MessageSquare, Inbox, Hand } from 'lucide-react';
 
 export default function MessagingPage() {
-  const { currentUser, userData } = useAuth();
+  const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [conversations, setConversations] = useState([]);
   const [activeConv, setActiveConv] = useState(null);
@@ -18,6 +18,7 @@ export default function MessagingPage() {
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
+  const [openError, setOpenError] = useState('');
   const messagesEndRef = useRef();
 
   useEffect(() => {
@@ -30,21 +31,49 @@ export default function MessagingPage() {
   }, [messages]);
 
   const openConversation = async (otherUid) => {
+    setOpenError('');
+    setMessages([]);
+    setInput('');
+
+    const searchedUser = searchResults.find(u => u.id === String(otherUid));
+    if (searchedUser) {
+      setActiveUser(searchedUser);
+      setActiveConv(getConversationId(currentUser.uid, searchedUser.id));
+      setConnectionStatus(null);
+      getConnectionStatus(searchedUser.id)
+        .then(({ status }) => setConnectionStatus(status))
+        .catch((err) => {
+          console.error('Failed to fetch connection status', err);
+          setConnectionStatus(null);
+        });
+      setSearch('');
+      setSearchResults([]);
+      return;
+    }
+
     try {
       const user = await getUserById(otherUid);
-      if (!user) return;
+      if (!user) {
+        setOpenError('User not found');
+        return;
+      }
       
       setActiveUser(user);
-      // We don't strictly need status to open, fetch it separately to avoid blocking
-      getConnectionStatus(otherUid).then(({status}) => setConnectionStatus(status));
+      setConnectionStatus(null);
+      getConnectionStatus(otherUid)
+        .then(({ status }) => setConnectionStatus(status))
+        .catch((err) => {
+          console.error('Failed to fetch connection status', err);
+          setConnectionStatus(null);
+        });
       
-      // Use the participant pair as activeConv to identify the thread uniquely
       setActiveConv(getConversationId(currentUser.uid, otherUid));
       
       setSearch('');
       setSearchResults([]);
     } catch (err) {
       console.error('Failed to open conversation', err);
+      setOpenError(err?.message || 'Failed to open conversation');
     }
   };
 
@@ -70,7 +99,12 @@ export default function MessagingPage() {
     if (!input.trim() || !activeUser) return;
     const text = input;
     setInput('');
-    await sendMessage(currentUser.uid, activeUser.id, text);
+    try {
+      await sendMessage(currentUser.uid, activeUser.id, text);
+    } catch (err) {
+      setInput(text);
+      alert(err?.message || 'Failed to send message');
+    }
   };
 
   const getOtherUid = (conv) => conv.participants.find(p => p !== currentUser.uid);
@@ -162,6 +196,7 @@ export default function MessagingPage() {
                 </div>
                 <h3 className="text-xl font-display font-bold text-slate-800 mb-2">Your Messages</h3>
                 <p className="text-slate-600 font-medium max-w-xs mx-auto">Select a conversation or start a new one to connect with peers, researchers, and institutions.</p>
+                {openError && <p className="text-sm font-semibold text-red-500 mt-4">{openError}</p>}
               </div>
             </div>
           ) : (

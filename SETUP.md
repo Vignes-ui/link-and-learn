@@ -39,6 +39,7 @@ LoadModule rewrite_module modules/mod_rewrite.so
 - Open phpMyAdmin: http://localhost/phpmyadmin
 - Create a new database called `linklearn`
 - Import `backend/sql/001_init.sql` into it
+- Then import the remaining numbered files in order (`002_connections.sql`, `003_notifications.sql`, etc., through `007_requirement_quotes.sql`)
 
 ## 6. Start the frontend
 

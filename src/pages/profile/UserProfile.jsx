@@ -11,6 +11,7 @@ export default function UserProfile() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [tab, setTab] = useState('overview');
 
@@ -23,6 +24,8 @@ export default function UserProfile() {
   }, [id, currentUser.uid]);
 
   const fetchUser = async () => {
+    setLoading(true);
+    setError('');
     try {
       const u = await getUserById(id);
       setUser(u);
@@ -32,6 +35,8 @@ export default function UserProfile() {
       setConnectionStatus(conn ? conn.status : null);
     } catch (err) {
       console.error(err);
+      setUser(null);
+      setError(err?.message || 'Unable to load this profile');
     } finally {
       setLoading(false);
     }
@@ -42,7 +47,7 @@ export default function UserProfile() {
       await requestConnection(id);
       setConnectionStatus('sent_pending');
     } catch (err) {
-      alert('Failed to send connection request');
+      alert(err?.message || 'Failed to send connection request');
     }
   };
 
@@ -52,12 +57,12 @@ export default function UserProfile() {
       await removeConnection(id);
       setConnectionStatus(null);
     } catch (err) {
-      alert('Failed to remove connection');
+      alert(err?.message || 'Failed to remove connection');
     }
   };
 
   if (loading) return <div className="p-20 text-center font-medium text-slate-500">Loading profile...</div>;
-  if (!user) return <div className="p-20 text-center font-medium text-slate-500">User not found</div>;
+  if (!user) return <div className="p-20 text-center font-medium text-slate-500">{error || 'User not found'}</div>;
 
   const isInstitutional = ['institution', 'govt_body', 'ngo', 'vendor', 'advertiser', 'admin'].includes(user.role);
   const tabs = isInstitutional ? ['overview'] : ['overview', 'skills', 'education', 'experience', 'publications'];
