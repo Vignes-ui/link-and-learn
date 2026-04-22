@@ -11,8 +11,11 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL DEFAULT '',
   avatar_url TEXT NULL,
   role VARCHAR(32) NOT NULL DEFAULT 'student',
+  role_selected TINYINT(1) NOT NULL DEFAULT 1,
   login_type VARCHAR(32) NOT NULL DEFAULT 'personal', -- personal | institutional
   account_status VARCHAR(32) NOT NULL DEFAULT 'active', -- active | pending | rejected | suspended
+  oauth_provider VARCHAR(32) NULL,
+  oauth_subject VARCHAR(255) NULL,
   profile_completed TINYINT(1) NOT NULL DEFAULT 0,
   bio TEXT NULL,
   skills_json JSON NULL,
@@ -28,6 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY uq_users_email (email),
+  UNIQUE KEY uq_users_oauth (oauth_provider, oauth_subject),
   KEY idx_users_role (role),
   KEY idx_users_account_status (account_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -72,6 +76,20 @@ CREATE TABLE IF NOT EXISTS post_comments (
   CONSTRAINT fk_post_comments_post FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE,
   CONSTRAINT fk_post_comments_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_post_comments_parent FOREIGN KEY (parent_comment_id) REFERENCES post_comments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_password_reset_token (token_hash),
+  KEY idx_password_reset_user (user_id),
+  KEY idx_password_reset_expires (expires_at),
+  CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS articles (

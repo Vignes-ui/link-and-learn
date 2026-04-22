@@ -1,19 +1,10 @@
 import { useState, useEffect } from 'react';
 import { login, signup } from '../../api/auth';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { ROLES } from '../../constants/roles';
 
-import { AlertCircle, Info } from 'lucide-react';
-
-const ROLES = [
-  { value: 'student', label: 'Student', type: 'personal' },
-  { value: 'researcher', label: 'Researcher / Faculty', type: 'personal' },
-  { value: 'institution', label: 'School / College / University', type: 'institutional' },
-  { value: 'govt_body', label: 'Government Research Body', type: 'institutional' },
-  { value: 'ngo', label: 'NGO / Funding Agency', type: 'institutional' },
-  { value: 'vendor', label: 'Vendor / Supplier', type: 'institutional' },
-  { value: 'advertiser', label: 'Advertiser / Sponsor', type: 'institutional' },
-];
+import { AlertCircle, CircleUserRound, Eye, EyeOff, Globe, Info, PanelsTopLeft } from 'lucide-react';
 
 export default function AuthPage() {
   const [isSignup, setIsSignup] = useState(false);
@@ -24,13 +15,25 @@ export default function AuthPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const { currentUser, refreshUser } = useAuth();
+  const { currentUser, refreshUser, userData } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
-    if (currentUser) navigate('/feed');
-  }, [currentUser, navigate]);
+    const params = new URLSearchParams(location.search);
+    const oauthError = params.get('oauth_error');
+    const oauthNotice = params.get('notice');
+    if (oauthError) setError(oauthError);
+    if (oauthNotice === 'approval-pending') {
+      setNotice('Institutional account created. Await admin approval before signing in.');
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (currentUser) navigate(userData?.roleSelected === false ? '/oauth-role' : '/feed');
+  }, [currentUser, navigate, userData?.roleSelected]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -57,6 +60,12 @@ export default function AuthPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleOAuth = (provider) => {
+    setError('');
+    const providerName = provider.charAt(0).toUpperCase() + provider.slice(1);
+    setNotice(`${providerName} OAuth button is added. Add the OAuth credentials later to enable real sign in.`);
   };
 
   const selectedRole = ROLES.find(r => r.value === role);
@@ -139,15 +148,37 @@ export default function AuthPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Password</label>
-            <input
-              type="password"
-              className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 p-3.5 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-300 shadow-sm"
-              placeholder="••••••••"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-            />
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1">Password</label>
+              {!isSignup && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/forgot-password')}
+                  className="text-xs font-semibold text-primary-600 hover:text-primary-700"
+                >
+                  Forgot password?
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                className="w-full bg-white border border-slate-200 text-slate-900 placeholder-slate-400 p-3.5 pr-12 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-300 shadow-sm"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((value) => !value)}
+                className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-slate-400 hover:text-slate-700"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
 
           {isSignup && (
@@ -201,6 +232,45 @@ export default function AuthPage() {
             </span>
           </button>
         </form>
+
+        <div className="my-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-xs font-semibold uppercase text-slate-400">or continue with</span>
+          <div className="h-px flex-1 bg-slate-200" />
+        </div>
+
+        <div className="grid gap-3">
+          <button
+            type="button"
+            onClick={() => handleOAuth('google')}
+            className="flex h-12 items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50"
+            title="Continue with Google"
+            aria-label="Continue with Google"
+          >
+            <Globe className="h-5 w-5" />
+            Google
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOAuth('microsoft')}
+            className="flex h-12 items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50"
+            title="Continue with Microsoft"
+            aria-label="Continue with Microsoft"
+          >
+            <PanelsTopLeft className="h-5 w-5" />
+            Microsoft
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOAuth('facebook')}
+            className="flex h-12 items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 shadow-sm transition hover:border-primary-200 hover:bg-primary-50"
+            title="Continue with Facebook"
+            aria-label="Continue with Facebook"
+          >
+            <CircleUserRound className="h-5 w-5" />
+            Facebook
+          </button>
+        </div>
       </div>
     </div>
   );

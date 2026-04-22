@@ -6,6 +6,7 @@ require_once __DIR__ . '/../src/bootstrap.php';
 use LinkLearn\Http;
 use LinkLearn\Auth;
 use LinkLearn\Db;
+use LinkLearn\OAuth;
 
 Http::cors();
 
@@ -150,6 +151,35 @@ if ($path === '/api/auth/login' && $method === 'POST') {
   $password = (string)($body['password'] ?? '');
   Auth::login($email, $password);
   Http::json(['ok' => true, 'user' => Auth::me()]);
+}
+
+if ($path === '/api/auth/forgot-password' && $method === 'POST') {
+  $body = Http::jsonBody();
+  $email = (string)($body['email'] ?? '');
+  Http::json(Auth::requestPasswordReset($email));
+}
+
+if ($path === '/api/auth/reset-password' && $method === 'POST') {
+  $body = Http::jsonBody();
+  $token = (string)($body['token'] ?? '');
+  $password = (string)($body['password'] ?? '');
+  Http::json(Auth::resetPassword($token, $password));
+}
+
+if (preg_match('#^/api/auth/oauth/(google|microsoft|facebook)/start$#', $path, $m) && $method === 'GET') {
+  OAuth::start($m[1]);
+}
+
+if (preg_match('#^/api/auth/oauth/(google|microsoft|facebook)/callback$#', $path, $m) && $method === 'GET') {
+  OAuth::callback($m[1]);
+}
+
+if ($path === '/api/auth/oauth/role' && $method === 'POST') {
+  $me = Auth::requireUser();
+  $body = Http::jsonBody();
+  $role = (string)($body['role'] ?? 'student');
+  $name = (string)($body['name'] ?? '');
+  Http::json(OAuth::completeRole((int)$me['id'], $role, $name));
 }
 
 if ($path === '/api/auth/logout' && $method === 'POST') {

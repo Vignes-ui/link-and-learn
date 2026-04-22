@@ -103,6 +103,64 @@ final class Auth {
     $_SESSION['user_id'] = (int)$u['id'];
   }
 
+  public static function requestPasswordReset(string $email): array {
+    $email = strtolower(trim($email));
+    if ($email === '') Http::json(['error' => 'email required'], 400);
+
+    $pdo = Db::pdo();
+    $stmt = $pdo->prepare("SELECT id, email, name FROM users WHERE email=? LIMIT 1");
+    $stmt->execute([$email]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    $generic = [
+      'ok' => true,
+      'message' => 'If an account exists for this email, a password reset link has been prepared.',
+    ];
+    if (!$user) return $generic;
+
+    $token = bin2hex(random_bytes(32));
+    $tokenHash = hash('sha256', $token);
+    $expiresAt = gmdate('Y-m-d H:i:s', time() + 3600);
+
+    $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id=? OR expires_at < UTC_TIMESTAMP()")
+      ->execute([(int)$user['id']]);
+    $pdo->prepare("INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES (?,?,?)")
+      ->execute([(int)$user['id'], $tokenHash, $expiresAt]);
+
+    $resetUrl = self::passwordResetUrl($token);
+    self::sendPasswordResetMail((string)$user['email'], (string)($user['name'] ?? ''), $resetUrl);
+
+    return $generic + ['resetUrl' => $resetUrl];
+  }
+
+  public static function resetPassword(string $token, string $password): array {
+    $token = trim($token);
+    if ($token === '') Http::json(['error' => 'reset token required'], 400);
+    if (strlen($password) < 6) Http::json(['error' => 'password too short'], 400);
+
+    $pdo = Db::pdo();
+    $tokenHash = hash('sha256', $token);
+    $stmt = $pdo->prepare("
+      SELECT t.id, t.user_id
+      FROM password_reset_tokens t
+      JOIN users u ON u.id = t.user_id
+      WHERE t.token_hash=? AND t.used_at IS NULL AND t.expires_at > UTC_TIMESTAMP()
+      LIMIT 1
+    ");
+    $stmt->execute([$tokenHash]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) Http::json(['error' => 'Reset link is invalid or expired'], 400);
+
+    $hash = password_hash($password, PASSWORD_BCRYPT);
+    $pdo->beginTransaction();
+    $pdo->prepare("UPDATE users SET password_hash=? WHERE id=?")->execute([$hash, (int)$row['user_id']]);
+    $pdo->prepare("UPDATE password_reset_tokens SET used_at=UTC_TIMESTAMP() WHERE id=?")->execute([(int)$row['id']]);
+    $pdo->prepare("DELETE FROM password_reset_tokens WHERE user_id=? AND id<>?")->execute([(int)$row['user_id'], (int)$row['id']]);
+    $pdo->commit();
+
+    return ['ok' => true, 'message' => 'Password updated. You can sign in now.'];
+  }
+
   public static function logout(): void {
     $_SESSION = [];
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -206,6 +264,26 @@ final class Auth {
     if ($id) return (int)$id;
     $pdo->prepare("INSERT INTO conversations (user1_id, user2_id, created_at) VALUES (?,?, NOW())")->execute([$u1, $u2]);
     return (int)$pdo->lastInsertId();
+  }
+
+  private static function passwordResetUrl(string $token): string {
+    $base = Env::get('RESET_PASSWORD_BASE_URL', '');
+    if (!$base) {
+      $origin = explode(',', (string)Env::get('APP_ORIGIN', 'http://localhost:5173'))[0] ?? 'http://localhost:5173';
+      $base = trim($origin);
+    }
+    return rtrim($base, '/') . '/reset-password?token=' . rawurlencode($token);
+  }
+
+  private static function sendPasswordResetMail(string $email, string $name, string $resetUrl): void {
+    $from = Env::get('MAIL_FROM', '');
+    if (!$from) return;
+
+    $subject = 'Reset your Link & Learn password';
+    $greeting = trim($name) !== '' ? "Hi {$name}," : 'Hi,';
+    $body = "{$greeting}\n\nUse this link to reset your password:\n{$resetUrl}\n\nThis link expires in 1 hour.\n\nIf you did not request this, you can ignore this email.";
+    $headers = "From: {$from}\r\nContent-Type: text/plain; charset=UTF-8\r\n";
+    @mail($email, $subject, $body, $headers);
   }
 
   public static function getConversationId(int $a, int $b): ?int {
@@ -325,6 +403,7 @@ final class Auth {
       'name' => (string)($u['name'] ?? ''),
       'avatar' => (string)($u['avatar_url'] ?? ''),
       'role' => (string)($u['role'] ?? 'student'),
+      'roleSelected' => (bool)($u['role_selected'] ?? true),
       'loginType' => (string)($u['login_type'] ?? 'personal'),
       'accountStatus' => (string)($u['account_status'] ?? 'active'),
       'profileCompleted' => (bool)($u['profile_completed'] ?? false),

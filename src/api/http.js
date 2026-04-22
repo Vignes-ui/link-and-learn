@@ -9,7 +9,7 @@ export class ApiError extends Error {
 
 // In development: Vite proxies /api → XAMPP (localhost:8080)
 // In production:  VITE_API_BASE = your live PHP host (e.g. https://yoursite.infinityfree.com)
-const BASE = import.meta.env.VITE_API_BASE || '';
+export const BASE = import.meta.env.VITE_API_BASE || '';
 
 async function parseJsonSafe(res) {
   const text = await res.text();

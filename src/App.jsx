@@ -2,6 +2,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // Auth
 import AuthPage from './pages/auth/AuthPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import OAuthRolePage from './pages/auth/OAuthRolePage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 
 // Profile
 import Profile from './pages/profile/Profile';
@@ -32,6 +35,15 @@ function App() {
 
         {/* Public */}
         <Route path="/" element={<AuthPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* OAuth role selection */}
+        <Route path="/oauth-role" element={
+          <ProtectedRoute>
+            <OAuthRolePage />
+          </ProtectedRoute>
+        } />
 
         {/* Profile Setup */}
         <Route path="/setup-profile" element={
