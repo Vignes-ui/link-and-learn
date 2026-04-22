@@ -22,8 +22,10 @@ export default function Profile() {
   const [education, setEducation] = useState([]);
   const [experience, setExperience] = useState([]);
   const [publications, setPublications] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [certDegree, setCertDegree] = useState('');
   const [uploading, setUploading] = useState(false);
+  const isInstitutional = ['institution', 'govt_body', 'ngo', 'vendor', 'advertiser', 'admin'].includes(userData?.role);
 
   useEffect(() => {
     if (userData) {
@@ -33,13 +35,15 @@ export default function Profile() {
       setEducation(userData.education || []);
       setExperience(userData.experience || []);
       setPublications(userData.publications || []);
+      setDepartments(Array.isArray(userData.departments) ? userData.departments : []);
     }
   }, [userData]);
 
   const save = async (data) => {
     setSaving(true); setMsg('');
     try {
-      await updateProfile(currentUser.uid, data);
+      const updated = await updateProfile(currentUser.uid, data);
+      setUserData(updated);
       setMsg('Saved successfully');
       setTimeout(() => setMsg(''), 3000);
     } catch { setMsg('Save failed'); }
@@ -82,8 +86,26 @@ export default function Profile() {
   const addEdu = () => setEducation([...education, { degree:'', institution:'', year:'' }]);
   const addExp = () => setExperience([...experience, { title:'', company:'', from:'', to:'', current:false }]);
   const addPub = () => setPublications([...publications, { title:'', journal:'', year:'', link:'' }]);
+  const addDepartment = () => setDepartments([...departments, { name: '', clubs: [] }]);
+  const updateDepartment = (index, patch) => setDepartments(departments.map((dept, i) => i === index ? { ...dept, ...patch } : dept));
+  const removeDepartment = (index) => setDepartments(departments.filter((_, i) => i !== index));
+  const addClub = (departmentIndex) => setDepartments(departments.map((dept, i) => (
+    i === departmentIndex ? { ...dept, clubs: [...(dept.clubs || []), { name: '', description: '' }] } : dept
+  )));
+  const updateClub = (departmentIndex, clubIndex, patch) => setDepartments(departments.map((dept, i) => {
+    if (i !== departmentIndex) return dept;
+    return {
+      ...dept,
+      clubs: (dept.clubs || []).map((club, j) => j === clubIndex ? { ...club, ...patch } : club),
+    };
+  }));
+  const removeClub = (departmentIndex, clubIndex) => setDepartments(departments.map((dept, i) => (
+    i === departmentIndex ? { ...dept, clubs: (dept.clubs || []).filter((_, j) => j !== clubIndex) } : dept
+  )));
 
-  const tabs = ['overview', 'skills', 'education', 'experience', 'publications', 'certificates'];
+  const tabs = isInstitutional
+    ? ['overview', 'organisation', 'certificates']
+    : ['overview', 'skills', 'education', 'experience', 'publications', 'certificates'];
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 lg:space-y-8 animate-fade-in pb-12">
@@ -207,6 +229,89 @@ export default function Profile() {
                     <Trash2 className="w-5 h-5" /> Delete Account
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {tab === 'organisation' && isInstitutional && (
+            <div className="space-y-6 animate-slide-up max-w-3xl">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                <h3 className="text-lg font-bold text-slate-900">Organisation Structure</h3>
+                <p className="text-sm text-slate-600 mt-1">
+                  Add the departments in your organisation and the clubs that belong to each department. These are used when publishing department-specific and club-specific events.
+                </p>
+              </div>
+
+              {departments.map((dept, deptIndex) => (
+                <div key={deptIndex} className="bg-white border border-slate-100 rounded-2xl p-5 md:p-6 shadow-sm space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1">
+                      <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider ml-1 mb-1 block">Department Name</label>
+                      <input
+                        className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-primary-500 focus:bg-white transition-all outline-none"
+                        placeholder="e.g. Computer Science"
+                        value={dept.name || ''}
+                        onChange={e => updateDepartment(deptIndex, { name: e.target.value })}
+                      />
+                    </div>
+                    <button
+                      onClick={() => removeDepartment(deptIndex)}
+                      className="mt-6 bg-red-50 text-red-600 px-3 py-2 rounded-xl border border-red-200 font-semibold"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-slate-700">Clubs</p>
+                      <button
+                        onClick={() => addClub(deptIndex)}
+                        className="text-sm font-semibold text-primary-600 hover:underline"
+                      >
+                        + Add Club
+                      </button>
+                    </div>
+
+                    {(dept.clubs || []).length === 0 && (
+                      <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-sm text-slate-500">
+                        No clubs added for this department yet.
+                      </div>
+                    )}
+
+                    {(dept.clubs || []).map((club, clubIndex) => (
+                      <div key={clubIndex} className="grid md:grid-cols-[1fr_1.4fr_auto] gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
+                        <input
+                          className="w-full bg-white border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                          placeholder="Club name"
+                          value={club.name || ''}
+                          onChange={e => updateClub(deptIndex, clubIndex, { name: e.target.value })}
+                        />
+                        <input
+                          className="w-full bg-white border border-slate-200 p-3 rounded-xl focus:ring-2 focus:ring-primary-500 outline-none"
+                          placeholder="What this club focuses on"
+                          value={club.description || ''}
+                          onChange={e => updateClub(deptIndex, clubIndex, { description: e.target.value })}
+                        />
+                        <button
+                          onClick={() => removeClub(deptIndex, clubIndex)}
+                          className="bg-white text-red-600 px-4 py-3 rounded-xl border border-red-200 font-semibold"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex gap-4 pt-2">
+                <button onClick={addDepartment} className="border-2 border-dashed border-primary-200 text-primary-600 bg-primary-50/50 hover:bg-primary-50 font-semibold px-6 py-3 rounded-xl transition-colors">
+                  + Add Department
+                </button>
+                <button onClick={() => save({ departments })} disabled={saving} className="bg-primary-600 text-white px-8 py-3 rounded-xl font-semibold shadow-md hover:bg-primary-700 disabled:opacity-50 transition-all">
+                  {saving ? 'Saving...' : 'Save Structure'}
+                </button>
               </div>
             </div>
           )}

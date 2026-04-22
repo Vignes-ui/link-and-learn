@@ -59,7 +59,9 @@ export default function UserProfile() {
   if (loading) return <div className="p-20 text-center font-medium text-slate-500">Loading profile...</div>;
   if (!user) return <div className="p-20 text-center font-medium text-slate-500">User not found</div>;
 
-  const tabs = ['overview', 'skills', 'education', 'experience', 'publications'];
+  const isInstitutional = ['institution', 'govt_body', 'ngo', 'vendor', 'advertiser', 'admin'].includes(user.role);
+  const tabs = isInstitutional ? ['overview'] : ['overview', 'skills', 'education', 'experience', 'publications'];
+  const departments = Array.isArray(user.departments) ? user.departments : [];
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in pb-12">
@@ -143,40 +145,87 @@ export default function UserProfile() {
             </p>
           </div>
 
-          <div className="glass-panel rounded-[2rem] p-6 border border-white/60 shadow-sm">
-            <h3 className="text-lg font-display font-bold text-slate-900 mb-4">Skills</h3>
-            <div className="flex flex-wrap gap-2">
-              {user.skills?.length > 0 ? (
-                user.skills.map(s => (
-                  <span key={s} className="bg-white border border-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">
-                    {s}
-                  </span>
-                ))
-              ) : <p className="text-xs text-slate-400 italic">No skills listed</p>}
+          {!isInstitutional && (
+            <div className="glass-panel rounded-[2rem] p-6 border border-white/60 shadow-sm">
+              <h3 className="text-lg font-display font-bold text-slate-900 mb-4">Skills</h3>
+              <div className="flex flex-wrap gap-2">
+                {user.skills?.length > 0 ? (
+                  user.skills.map(s => (
+                    <span key={s} className="bg-white border border-slate-100 text-slate-700 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm">
+                      {s}
+                    </span>
+                  ))
+                ) : <p className="text-xs text-slate-400 italic">No skills listed</p>}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Right Content Area */}
         <div className="lg:col-span-2 space-y-6">
           <div className="glass-panel rounded-[2rem] border border-white/60 shadow-sm overflow-hidden">
-            <div className="flex overflow-x-auto border-b border-slate-100 bg-white/40">
-              {tabs.filter(t => t !== 'overview' && t !== 'skills').map(t => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`px-8 py-5 text-sm font-bold capitalize transition-all relative ${tab === t ? 'text-primary-600' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                  {t}
-                  {tab === t && <div className="absolute bottom-0 left-0 w-full h-1 bg-primary-500 rounded-t-full" />}
-                </button>
-              ))}
-            </div>
+            {!isInstitutional && (
+              <div className="flex overflow-x-auto border-b border-slate-100 bg-white/40">
+                {tabs.filter(t => t !== 'overview' && t !== 'skills').map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={`px-8 py-5 text-sm font-bold capitalize transition-all relative ${tab === t ? 'text-primary-600' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    {t}
+                    {tab === t && <div className="absolute bottom-0 left-0 w-full h-1 bg-primary-500 rounded-t-full" />}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="p-8">
-              {tab === 'overview' && <div className="text-slate-500 italic">Select a tab above to view details.</div>}
+              {tab === 'overview' && (
+                isInstitutional ? (
+                  <div className="space-y-6">
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                      <h3 className="text-lg font-display font-bold text-slate-900">Departments</h3>
+                      <p className="text-sm text-slate-600 mt-1">
+                        Explore the organisation structure and the clubs attached to each department.
+                      </p>
+                    </div>
+
+                    {departments.length === 0 ? (
+                      <div className="text-slate-500 italic">No departments have been published yet.</div>
+                    ) : (
+                      <div className="space-y-4">
+                        {departments.map((dept, deptIndex) => (
+                          <div key={deptIndex} className="bg-white/70 border border-slate-200 rounded-2xl p-5 shadow-sm">
+                            <div className="flex items-center justify-between gap-4 mb-4">
+                              <h4 className="text-lg font-bold text-slate-900">{dept?.name || 'Unnamed Department'}</h4>
+                              <span className="text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-600 px-3 py-1 rounded-full border border-slate-200">
+                                {(dept?.clubs || []).length} Clubs
+                              </span>
+                            </div>
+
+                            {(dept?.clubs || []).length === 0 ? (
+                              <p className="text-sm text-slate-500 italic">No clubs listed for this department.</p>
+                            ) : (
+                              <div className="grid gap-3">
+                                {(dept.clubs || []).map((club, clubIndex) => (
+                                  <div key={clubIndex} className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                                    <p className="font-bold text-slate-900">{club?.name || 'Unnamed Club'}</p>
+                                    <p className="text-sm text-slate-600 mt-1">{club?.description || 'No club description provided.'}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-slate-500 italic">Select a tab above to view details.</div>
+                )
+              )}
               
-              {tab === 'education' && (
+              {!isInstitutional && tab === 'education' && (
                 <div className="space-y-6">
                   {user.education?.length > 0 ? user.education.map((edu, i) => (
                     <div key={i} className="flex gap-4">
@@ -193,7 +242,7 @@ export default function UserProfile() {
                 </div>
               )}
 
-              {tab === 'experience' && (
+              {!isInstitutional && tab === 'experience' && (
                 <div className="space-y-8">
                   {user.experience?.length > 0 ? user.experience.map((exp, i) => (
                     <div key={i} className="flex gap-4 relative">
@@ -213,7 +262,7 @@ export default function UserProfile() {
                 </div>
               )}
 
-              {tab === 'publications' && (
+              {!isInstitutional && tab === 'publications' && (
                 <div className="space-y-4">
                   {user.publications?.length > 0 ? user.publications.map((pub, i) => (
                     <div key={i} className="p-5 bg-white/60 border border-slate-100 rounded-2xl flex items-start justify-between group hover:border-primary-200 transition-all">

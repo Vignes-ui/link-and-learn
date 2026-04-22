@@ -50,7 +50,7 @@ final class Auth {
     return $me;
   }
 
-  public static function signup(string $email, string $password, string $role, string $name): void {
+  public static function signup(string $email, string $password, string $role, string $name): array {
     if ($email === '' || $password === '') Http::json(['error' => 'email/password required'], 400);
     if (strlen($password) < 6) Http::json(['error' => 'password too short'], 400);
     $institutionalRoles = ['institution', 'govt_body', 'ngo', 'vendor', 'advertiser', 'admin'];
@@ -69,7 +69,16 @@ final class Auth {
       }
       Http::json(['error' => 'Signup failed'], 500);
     }
-    $_SESSION['user_id'] = (int)$pdo->lastInsertId();
+    $id = (int)$pdo->lastInsertId();
+    if (!$isInstitutional) {
+      $_SESSION['user_id'] = $id;
+    }
+
+    return [
+      'id' => (string)$id,
+      'accountStatus' => $accountStatus,
+      'loginAllowed' => !$isInstitutional,
+    ];
   }
 
   public static function login(string $email, string $password): void {
@@ -81,8 +90,15 @@ final class Auth {
     if (!$u || !$u['password_hash'] || !password_verify($password, $u['password_hash'])) {
       Http::json(['error' => 'Invalid credentials'], 401);
     }
-    if (($u['account_status'] ?? 'active') !== 'active') {
-      Http::json(['error' => 'Account not active'], 403);
+    $status = (string)($u['account_status'] ?? 'active');
+    if ($status === 'pending') {
+      Http::json(['error' => 'Account pending admin approval'], 403);
+    }
+    if ($status === 'rejected') {
+      Http::json(['error' => 'Account rejected'], 403);
+    }
+    if ($status === 'suspended') {
+      Http::json(['error' => 'Account suspended'], 403);
     }
     $_SESSION['user_id'] = (int)$u['id'];
   }
