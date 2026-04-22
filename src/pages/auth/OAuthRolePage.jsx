@@ -16,17 +16,17 @@ export default function OAuthRolePage() {
   useEffect(() => {
     if (!currentUser) navigate('/', { replace: true });
     if (currentUser && userData?.roleSelected !== false) navigate('/feed', { replace: true });
-    if (userData?.name) setName(userData.name);
   }, [currentUser, navigate, userData]);
 
   const institutional = isInstitutionalRole(role);
+  const displayName = name || userData?.name || '';
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const res = await completeOAuthRole(role, name);
+      const res = await completeOAuthRole(role, displayName);
       await refreshUser();
       if (res?.loginAllowed === false) {
         navigate('/?notice=approval-pending', { replace: true });
@@ -68,7 +68,7 @@ export default function OAuthRolePage() {
             <input
               type="text"
               className="w-full rounded-xl border border-slate-200 bg-white p-3.5 text-slate-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-primary-500"
-              value={name}
+              value={displayName}
               onChange={(event) => setName(event.target.value)}
               placeholder="Your name or organisation"
               required

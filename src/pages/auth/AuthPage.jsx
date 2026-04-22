@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { login, signup } from '../../api/auth';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -7,29 +7,28 @@ import { ROLES } from '../../constants/roles';
 import { AlertCircle, CircleUserRound, Eye, EyeOff, Globe, Info, PanelsTopLeft } from 'lucide-react';
 
 export default function AuthPage() {
+  const location = useLocation();
+  const oauthMessage = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const oauthError = params.get('oauth_error') || '';
+    const oauthNotice = params.get('notice') === 'approval-pending'
+      ? 'Institutional account created. Await admin approval before signing in.'
+      : '';
+    return { error: oauthError, notice: oauthNotice };
+  }, [location.search]);
+
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [role, setRole] = useState('student');
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [error, setError] = useState(oauthMessage.error);
+  const [notice, setNotice] = useState(oauthMessage.notice);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const { currentUser, refreshUser, userData } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const oauthError = params.get('oauth_error');
-    const oauthNotice = params.get('notice');
-    if (oauthError) setError(oauthError);
-    if (oauthNotice === 'approval-pending') {
-      setNotice('Institutional account created. Await admin approval before signing in.');
-    }
-  }, [location.search]);
 
   useEffect(() => {
     if (currentUser) navigate(userData?.roleSelected === false ? '/oauth-role' : '/feed');
