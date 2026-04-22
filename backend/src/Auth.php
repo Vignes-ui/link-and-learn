@@ -8,13 +8,20 @@ use PDO;
 final class Auth {
   public static function startSession(): void {
     $name = Env::get('SESSION_NAME', 'linklearn_session') ?: 'linklearn_session';
+    $sameSite = Env::get('SESSION_SAMESITE', 'Lax') ?: 'Lax';
+    $secure = filter_var(Env::get('SESSION_SECURE', '0'), FILTER_VALIDATE_BOOLEAN);
+    $domain = Env::get('SESSION_DOMAIN', '') ?: '';
     session_name($name);
-    session_set_cookie_params([
+    $params = [
       'httponly' => true,
-      'samesite' => 'Lax',
-      'secure' => false,
+      'samesite' => $sameSite,
+      'secure' => $secure,
       'path' => '/',
-    ]);
+    ];
+    if ($domain !== '') {
+      $params['domain'] = $domain;
+    }
+    session_set_cookie_params($params);
     if (session_status() !== PHP_SESSION_ACTIVE) {
       session_start();
     }

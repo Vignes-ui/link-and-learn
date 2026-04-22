@@ -6,8 +6,11 @@ namespace LinkLearn;
 final class Http {
   public static function cors(): void {
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    $allowed = Env::get('APP_ORIGIN', 'http://localhost:5173');
-    if ($origin && $origin === $allowed) {
+    $allowed = array_values(array_filter(array_map(
+      static fn(string $value): string => rtrim(trim($value), '/'),
+      explode(',', (string)Env::get('APP_ORIGIN', 'http://localhost:5173'))
+    )));
+    if ($origin && in_array(rtrim($origin, '/'), $allowed, true)) {
       header('Access-Control-Allow-Origin: ' . $origin);
       header('Vary: Origin');
     }

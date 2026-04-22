@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/../src/bootstrap.php';
+require_once __DIR__ . '/src/bootstrap.php';
 
 use LinkLearn\Http;
 use LinkLearn\Auth;
@@ -95,17 +95,34 @@ function ll_send_matching_notifications(string $kind, array $actor, array $paylo
 
 // Static uploads are served by web server. For PHP built-in server, we map /uploads here.
 if (str_starts_with($path, '/uploads/')) {
-  $file = realpath(__DIR__ . '/../uploads' . substr($path, strlen('/uploads')));
-  $uploadsRoot = realpath(__DIR__ . '/../uploads');
+  $file = realpath(__DIR__ . '/uploads' . substr($path, strlen('/uploads')));
+  $uploadsRoot = realpath(__DIR__ . '/uploads');
   if (!$file || !$uploadsRoot || !str_starts_with($file, $uploadsRoot) || !is_file($file)) {
     Http::json(['error' => 'Not found'], 404);
   }
   Http::sendFile($file);
 }
 
+// Serve the built frontend for non-API routes in production.
+$frontendIndex = __DIR__ . '/index.html';
+if (!str_starts_with($path, '/api') && !str_starts_with($path, '/uploads') && is_file($frontendIndex)) {
+  Http::sendFile($frontendIndex);
+}
+
 // Health
 if ($path === '/api/health') {
-  Http::json(['ok' => true]);
+  try {
+    $pdo = Db::pdo();
+    $pdo->query('SELECT 1');
+    Http::json(['ok' => true, 'db' => 'connected']);
+  } catch (\Throwable $e) {
+    Http::json([
+      'ok' => false,
+      'db' => 'failed',
+      'error' => 'DB health check failed',
+      'detail' => $e->getMessage(),
+    ], 500);
+  }
 }
 
 // --- AUTH ---

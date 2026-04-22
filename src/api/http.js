@@ -30,7 +30,9 @@ export async function apiFetch(path, { method = 'GET', headers, body } = {}) {
 
   const payload = await parseJsonSafe(res);
   if (!res.ok) {
-    const msg = payload?.error || payload?.message || `Request failed (${res.status})`;
+    const detail = typeof payload?.detail === 'string' ? payload.detail.trim() : '';
+    const baseMsg = payload?.error || payload?.message || `Request failed (${res.status})`;
+    const msg = detail && detail !== baseMsg ? `${baseMsg}: ${detail}` : baseMsg;
     throw new ApiError(msg, res.status, payload);
   }
   return payload;
