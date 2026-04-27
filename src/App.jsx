@@ -1,4 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useAuth } from './context/AuthContext';
+import { getHomePathForRole } from './constants/navigation';
 
 // Auth
 import AuthPage from './pages/auth/AuthPage';
@@ -28,6 +30,11 @@ import ProtectedRoute from './components/ProtectedRoute';
 import ProfileGuard from './components/ProfileGuard';
 import Layout from './components/Layout';
 
+function DashboardRedirect() {
+  const { userRole } = useAuth();
+  return <Navigate to={getHomePathForRole(userRole)} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -53,7 +60,11 @@ function App() {
         } />
 
         {/* /dashboard → redirect to /feed */}
-        <Route path="/dashboard" element={<Navigate to="/feed" replace />} />
+        <Route path="/dashboard" element={
+          <ProtectedRoute>
+            <DashboardRedirect />
+          </ProtectedRoute>
+        } />
 
         {/* Profile */}
         <Route path="/profile" element={

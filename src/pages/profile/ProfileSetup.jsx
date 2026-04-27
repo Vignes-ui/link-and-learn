@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { updateProfile } from '../../api/profile';
 import { useNavigate } from 'react-router-dom';
+import { getHomePathForRole } from '../../constants/navigation';
 import { Sparkles, Building2, UserCircle, Clock, ArrowRight } from 'lucide-react';
 
 export default function ProfileSetup() {
@@ -29,7 +30,7 @@ export default function ProfileSetup() {
         profileCompleted: true,
       });
       await refreshUser();
-      navigate('/feed');
+      navigate(getHomePathForRole(userData?.role));
     } catch (err) {
       alert('Error saving profile: ' + err.message);
     } finally {

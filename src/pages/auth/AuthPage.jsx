@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { login, signup } from '../../api/auth';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getHomePathForRole } from '../../constants/navigation';
 import { ROLES } from '../../constants/roles';
 
 import { AlertCircle, CircleUserRound, Eye, EyeOff, Globe, Info, PanelsTopLeft } from 'lucide-react';
@@ -29,10 +30,11 @@ export default function AuthPage() {
 
   const { currentUser, refreshUser, userData } = useAuth();
   const navigate = useNavigate();
+  const defaultRoute = getHomePathForRole(userData?.role);
 
   useEffect(() => {
-    if (currentUser) navigate(userData?.roleSelected === false ? '/oauth-role' : '/feed');
-  }, [currentUser, navigate, userData?.roleSelected]);
+    if (currentUser) navigate(userData?.roleSelected === false ? '/oauth-role' : defaultRoute);
+  }, [currentUser, defaultRoute, navigate, userData?.roleSelected]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -53,7 +55,6 @@ export default function AuthPage() {
         await login(email, password);
       }
       await refreshUser();
-      navigate('/feed');
     } catch (err) {
       setError(err.message);
     } finally {

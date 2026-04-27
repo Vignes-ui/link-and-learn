@@ -1,6 +1,7 @@
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
+import { getHomePathForRole } from '../constants/navigation';
 
 import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut, Users, Bell, Megaphone } from 'lucide-react';
 import { subscribeNotifications } from '../api/notifications';
@@ -11,12 +12,15 @@ const NAV_ITEMS = [
   { label: 'Articles', path: '/articles', icon: <BookOpen className="w-5 h-5" />, roles: '*' },
   { label: 'Recruitment', path: '/recruitment', icon: <Briefcase className="w-5 h-5" />, roles: '*' },
   { label: 'Events', path: '/events', icon: <CalendarDays className="w-5 h-5" />, roles: '*' },
+  { label: 'Vendor', path: '/vendor', icon: <Building2 className="w-5 h-5" />, roles: ['institution','govt_body','ngo','vendor','admin'] },
   { label: 'Messages', path: '/messages', icon: <MessageSquare className="w-5 h-5" />, roles: '*' },
   { label: 'Notifications', path: '/notifications', icon: <Bell className="w-5 h-5" />, roles: '*' },
-  { label: 'Vendor', path: '/vendor', icon: <Building2 className="w-5 h-5" />, roles: ['institution','govt_body','ngo','vendor','admin'] },
   { label: 'Ads', path: '/ads', icon: <Megaphone className="w-5 h-5" />, roles: ['advertiser','institution','govt_body','ngo','vendor','admin'] },
   { label: 'Admin', path: '/admin', icon: <ShieldCheck className="w-5 h-5" />, roles: ['admin'] },
 ];
+
+const VENDOR_ONLY_NAV_PATHS = new Set(['/vendor', '/messages', '/notifications', '/ads']);
+const ADVERTISER_NAV_ORDER = ['/ads', '/network', '/messages', '/notifications'];
 
 export default function Layout({ children }) {
   const { userData, userRole, logout } = useAuth();
@@ -62,9 +66,66 @@ export default function Layout({ children }) {
     navigate('/');
   };
 
-  const visibleLinks = NAV_ITEMS.filter(item =>
-    item.roles === '*' || item.roles.includes(userRole)
-  );
+  const homePath = getHomePathForRole(userRole);
+
+  const visibleLinks = NAV_ITEMS.filter((item) => {
+    if (userRole === 'admin') {
+      return item.path === '/admin';
+    }
+    if (userRole === 'advertiser') {
+      return ADVERTISER_NAV_ORDER.includes(item.path);
+    }
+    if (userRole === 'vendor') {
+      return VENDOR_ONLY_NAV_PATHS.has(item.path);
+    }
+    return item.roles === '*' || item.roles.includes(userRole);
+  }).sort((a, b) => {
+    if (userRole !== 'advertiser') return 0;
+    return ADVERTISER_NAV_ORDER.indexOf(a.path) - ADVERTISER_NAV_ORDER.indexOf(b.path);
+  });
+
+  if (userRole === 'admin') {
+    return (
+      <div className="min-h-screen bg-[#FAF9F6] text-slate-800">
+        <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+          <div className="absolute top-[-20%] right-[-10%] h-[50%] w-[50%] rounded-full bg-slate-200 blur-[150px] opacity-40" />
+          <div className="absolute bottom-[-10%] left-[-10%] h-[40%] w-[40%] rounded-full bg-slate-200 blur-[120px] opacity-40" />
+        </div>
+
+        <header className="border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lg shadow-primary-500/20">
+                <span className="font-display text-xl font-bold tracking-tighter text-white">L</span>
+              </div>
+              <div>
+                <p className="font-display text-xl font-bold tracking-tight text-slate-900">Link & Learn</p>
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Admin Portal</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="hidden text-right sm:block">
+                <p className="text-sm font-bold text-slate-900">{userData?.name || 'Admin'}</p>
+                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Administrator</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-600 shadow-sm transition-colors hover:bg-red-50"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-10">
+          {children}
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-slate-800 flex overflow-hidden">
@@ -77,7 +138,7 @@ export default function Layout({ children }) {
       {/* Sidebar — desktop */}
       <aside className="hidden md:flex flex-col w-64 glass-panel border-r border-slate-200/50 fixed h-full z-10 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
         {/* Logo */}
-        <div className="p-6 cursor-pointer" onClick={() => navigate('/feed')}>
+        <div className="p-6 cursor-pointer" onClick={() => navigate(homePath)}>
           <div className="flex items-center gap-3 group">
             <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/30 group-hover:scale-105 transition-transform duration-300">
               <span className="text-white font-display font-bold text-xl tracking-tighter">L</span>
@@ -140,7 +201,7 @@ export default function Layout({ children }) {
 
       {/* Mobile topbar */}
       <div className="md:hidden fixed top-0 left-0 right-0 glass-panel border-b border-slate-200/50 z-20 px-4 py-3 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-2" onClick={() => navigate('/feed')}>
+        <div className="flex items-center gap-2" onClick={() => navigate(homePath)}>
           <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center shadow-sm">
             <span className="text-white font-display font-bold text-sm">L</span>
           </div>

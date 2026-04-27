@@ -271,12 +271,12 @@ CREATE TABLE IF NOT EXISTS ads (
   CONSTRAINT fk_ads_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Seed an admin user (password: admin123). Change after first login.
+-- Seed an admin user (password: admin@123). Change after first login.
 -- Uses bcrypt hash.
 INSERT INTO users (email, password_hash, name, role, login_type, account_status, profile_completed, verified_badge)
 VALUES (
   'admin@linklearn.local',
-  '$2y$10$C7h8Yjq6gpz9HEGTSf4C6O4YB2p9Q9nH4nPjA9y8m7gE2Q8Oa9V1q',
+  '$2y$10$wXqQfd2iT3iIhtI0Xkrp2eedRL8/9nAij4kuBbSdC4u8ftvkj/FDG',
   'Platform Admin',
   'admin',
   'institutional',

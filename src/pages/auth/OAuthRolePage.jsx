@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Info } from 'lucide-react';
 import { completeOAuthRole } from '../../api/auth';
 import { useAuth } from '../../context/AuthContext';
+import { getHomePathForRole } from '../../constants/navigation';
 import { isInstitutionalRole, ROLES } from '../../constants/roles';
 
 export default function OAuthRolePage() {
@@ -15,7 +16,7 @@ export default function OAuthRolePage() {
 
   useEffect(() => {
     if (!currentUser) navigate('/', { replace: true });
-    if (currentUser && userData?.roleSelected !== false) navigate('/feed', { replace: true });
+    if (currentUser && userData?.roleSelected !== false) navigate(getHomePathForRole(userData?.role), { replace: true });
   }, [currentUser, navigate, userData]);
 
   const institutional = isInstitutionalRole(role);
