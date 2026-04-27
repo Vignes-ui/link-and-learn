@@ -7,6 +7,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Local env / runtime data
+.env
+backend/.env
+backend/tmp/
+backend/upload.zip
+tmp_brd/
+tmp_bsd/
+tmp_brd.zip
+tmp_bsd.zip
+
 node_modules
 dist
 dist-ssr
