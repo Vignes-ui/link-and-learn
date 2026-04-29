@@ -885,19 +885,7 @@ if ($path === '/api/vacancies/mine' && $method === 'GET') {
   $me = Auth::requireUser();
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("
-    SELECT v.*,
-      COALESCE((
-        SELECT JSON_ARRAYAGG(JSON_OBJECT(
-          'uid', CAST(a.user_id AS CHAR),
-          'name', a.name,
-          'email', a.email,
-          'role', a.role,
-          'status', a.status,
-          'appliedAt', DATE_FORMAT(a.applied_at, '%Y-%m-%dT%H:%i:%sZ')
-        ))
-        FROM vacancy_applicants a
-        WHERE a.vacancy_id = v.id
-      ), JSON_ARRAY()) AS applicants_json
+    SELECT v.*
     FROM vacancies v
     WHERE v.user_id=?
     ORDER BY v.created_at DESC
@@ -905,6 +893,27 @@ if ($path === '/api/vacancies/mine' && $method === 'GET') {
   ");
   $stmt->execute([(int)$me['id']]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $ids = array_map(fn($v) => (int)$v['id'], $rows);
+  $appsBy = [];
+  if (count($ids) > 0) {
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    $appsStmt = $pdo->prepare("SELECT * FROM vacancy_applicants WHERE vacancy_id IN ($in) ORDER BY applied_at DESC");
+    $appsStmt->execute($ids);
+    foreach ($appsStmt->fetchAll(PDO::FETCH_ASSOC) as $a) {
+      $appsBy[(int)$a['vacancy_id']][] = [
+        'uid' => (string)$a['user_id'],
+        'name' => $a['name'],
+        'email' => $a['email'],
+        'role' => $a['role'],
+        'status' => $a['status'],
+        'appliedAt' => gmdate('c', strtotime($a['applied_at'])),
+      ];
+    }
+  }
+  $rows = array_map(function($v) use ($appsBy) {
+    $v['applicants_json'] = json_encode($appsBy[(int)$v['id']] ?? []);
+    return $v;
+  }, $rows);
   Http::json(['vacancies' => array_map('LinkLearn\\Transform::vacancy', $rows)]);
 }
 
@@ -1019,20 +1028,7 @@ if ($path === '/api/requirements/mine' && $method === 'GET') {
   $me = Auth::requireUser();
   $pdo = Db::pdo();
   $stmt = $pdo->prepare("
-    SELECT r.*,
-      COALESCE((
-        SELECT JSON_ARRAYAGG(JSON_OBJECT(
-          'vendorUid', CAST(q.vendor_user_id AS CHAR),
-          'vendorName', q.vendor_name,
-          'price', q.price,
-          'timeline', q.timeline,
-          'terms', q.terms,
-          'submittedAt', DATE_FORMAT(q.submitted_at, '%Y-%m-%dT%H:%i:%sZ'),
-          'status', q.status
-        ))
-        FROM requirement_quotes q
-        WHERE q.requirement_id = r.id
-      ), JSON_ARRAY()) AS quotes_json
+    SELECT r.*
     FROM requirements r
     WHERE r.user_id=?
     ORDER BY r.created_at DESC
@@ -1040,6 +1036,28 @@ if ($path === '/api/requirements/mine' && $method === 'GET') {
   ");
   $stmt->execute([(int)$me['id']]);
   $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $ids = array_map(fn($r) => (int)$r['id'], $rows);
+  $quotesBy = [];
+  if (count($ids) > 0) {
+    $in = implode(',', array_fill(0, count($ids), '?'));
+    $quotesStmt = $pdo->prepare("SELECT * FROM requirement_quotes WHERE requirement_id IN ($in) ORDER BY submitted_at DESC");
+    $quotesStmt->execute($ids);
+    foreach ($quotesStmt->fetchAll(PDO::FETCH_ASSOC) as $q) {
+      $quotesBy[(int)$q['requirement_id']][] = [
+        'vendorUid' => (string)$q['vendor_user_id'],
+        'vendorName' => $q['vendor_name'],
+        'price' => $q['price'],
+        'timeline' => $q['timeline'],
+        'terms' => $q['terms'],
+        'submittedAt' => gmdate('c', strtotime($q['submitted_at'])),
+        'status' => $q['status'],
+      ];
+    }
+  }
+  $rows = array_map(function($r) use ($quotesBy) {
+    $r['quotes_json'] = json_encode($quotesBy[(int)$r['id']] ?? []);
+    return $r;
+  }, $rows);
   Http::json(['requirements' => array_map('LinkLearn\\Transform::requirement', $rows)]);
 }
 
