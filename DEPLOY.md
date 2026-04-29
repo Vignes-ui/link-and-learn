@@ -113,3 +113,78 @@ SESSION_SECURE=1
 ```
 
 This works, but same-domain deployment is simpler and more reliable for this codebase.
+
+## Vercel + Render deployment
+
+If you want to deploy:
+
+- frontend on Vercel
+- backend on Render
+
+use this setup.
+
+### Frontend on Vercel
+
+Deploy the repo root as a Vite project.
+
+Set this environment variable in Vercel:
+
+```env
+VITE_API_BASE=https://your-render-service.onrender.com
+```
+
+Build command:
+
+```bash
+npm install && npm run build
+```
+
+Output directory:
+
+```text
+dist
+```
+
+### Backend on Render
+
+This repo now includes:
+
+- `render.yaml`
+- `backend/Dockerfile`
+
+so you can deploy the backend as a Docker-based Render web service.
+
+Render environment variables:
+
+```env
+DB_HOST=your-db-host
+DB_PORT=3306
+DB_NAME=your-db-name
+DB_USER=your-db-user
+DB_PASS=your-db-password
+
+APP_ORIGIN=https://your-vercel-app.vercel.app
+SESSION_NAME=linklearn_session
+SESSION_SAMESITE=None
+SESSION_SECURE=1
+SESSION_DOMAIN=
+
+UPLOAD_BASE_URL=/uploads
+RESET_PASSWORD_BASE_URL=https://your-vercel-app.vercel.app
+MAIL_FROM=
+API_BASE_URL=https://your-render-service.onrender.com
+```
+
+Notes:
+
+- `SESSION_SAMESITE=None` is required because Vercel and Render are different origins.
+- `credentials: 'include'` is already configured in the frontend.
+- Render free web services can spin down after inactivity.
+- Render services use an ephemeral filesystem by default. Uploaded avatars, certificates, and post images can be lost after redeploy or restart unless you move uploads to external storage or use a paid persistent disk.
+
+### Which part is better on which platform
+
+- Vercel is the better choice for this frontend.
+- Render is acceptable for the backend, but only as a free/demo deployment because of cold starts and non-persistent local uploads.
+
+If you want the most stable long-term setup for this codebase, use one PHP host for both frontend and backend. If you want the best free split setup, Vercel + Render is workable, but you should treat uploads as temporary unless you later add object storage.

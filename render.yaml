@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: link-and-learn-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    autoDeploy: true
