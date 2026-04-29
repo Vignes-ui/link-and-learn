@@ -55,9 +55,9 @@ final class Http {
       self::json(['error' => 'file required'], 400);
     }
 
-    $root = realpath(__DIR__ . '/../uploads');
+    $root = realpath(__DIR__ . '/../public/uploads');
     if ($root === false) {
-      $root = __DIR__ . '/../uploads';
+      $root = __DIR__ . '/../public/uploads';
       @mkdir($root, 0777, true);
     }
     $targetDir = rtrim($root, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . trim($subdir, '/\\');

@@ -100,8 +100,9 @@ function ll_send_matching_notifications(string $kind, array $actor, array $paylo
 
 // Static uploads are served by web server. For PHP built-in server, we map /uploads here.
 if (str_starts_with($path, '/uploads/')) {
-  $file = realpath(__DIR__ . '/uploads' . substr($path, strlen('/uploads')));
   $uploadsRoot = realpath(__DIR__ . '/uploads');
+  $relativePath = substr($path, strlen('/uploads'));
+  $file = $uploadsRoot ? realpath($uploadsRoot . $relativePath) : false;
   if (!$file || !$uploadsRoot || !str_starts_with($file, $uploadsRoot) || !is_file($file)) {
     Http::json(['error' => 'Not found'], 404);
   }
