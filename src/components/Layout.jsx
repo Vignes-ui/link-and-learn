@@ -6,6 +6,8 @@ import { getHomePathForRole } from '../constants/navigation';
 import { FileText, BookOpen, Briefcase, CalendarDays, MessageSquare, Building2, ShieldCheck, Menu, X, LogOut, Users, Bell, Megaphone } from 'lucide-react';
 import { subscribeNotifications } from '../api/notifications';
 
+const LOGO_SRC = '/logo-big.png';
+
 const NAV_ITEMS = [
   { label: 'Feed', path: '/feed', icon: <FileText className="w-5 h-5" />, roles: '*' },
   { label: 'Network', path: '/network', icon: <Users className="w-5 h-5" />, roles: '*' },
@@ -95,9 +97,7 @@ export default function Layout({ children }) {
         <header className="border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-8">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary-500 to-primary-700 shadow-lg shadow-primary-500/20">
-                <span className="font-display text-xl font-bold tracking-tighter text-white">L</span>
-              </div>
+              <img src={LOGO_SRC} alt="Link & Learn" className="h-11 w-11 rounded-xl object-contain shadow-lg shadow-primary-500/20" />
               <div>
                 <p className="font-display text-xl font-bold tracking-tight text-slate-900">Link & Learn</p>
                 <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Admin Portal</p>
@@ -140,9 +140,7 @@ export default function Layout({ children }) {
         {/* Logo */}
         <div className="p-6 cursor-pointer" onClick={() => navigate(homePath)}>
           <div className="flex items-center gap-3 group">
-            <div className="w-10 h-10 bg-gradient-to-br from-primary-500 to-primary-700 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/30 group-hover:scale-105 transition-transform duration-300">
-              <span className="text-white font-display font-bold text-xl tracking-tighter">L</span>
-            </div>
+            <img src={LOGO_SRC} alt="Link & Learn" className="w-10 h-10 rounded-xl object-contain shadow-lg shadow-primary-500/30 group-hover:scale-105 transition-transform duration-300" />
             <span className="font-display font-bold text-slate-900 text-xl tracking-tight">Link & Learn</span>
           </div>
         </div>
@@ -202,9 +200,7 @@ export default function Layout({ children }) {
       {/* Mobile topbar */}
       <div className="md:hidden fixed top-0 left-0 right-0 glass-panel border-b border-slate-200/50 z-20 px-4 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-2" onClick={() => navigate(homePath)}>
-          <div className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center shadow-sm">
-            <span className="text-white font-display font-bold text-sm">L</span>
-          </div>
+          <img src={LOGO_SRC} alt="Link & Learn" className="w-8 h-8 rounded-lg object-contain shadow-sm" />
           <span className="font-display font-bold text-slate-900">Link & Learn</span>
         </div>
         <button onClick={() => setMobileOpen(!mobileOpen)} className="p-2 -mr-2 text-slate-600 hover:text-slate-900 transition-colors">

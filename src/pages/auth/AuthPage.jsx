@@ -7,6 +7,8 @@ import { ROLES } from '../../constants/roles';
 
 import { AlertCircle, CircleUserRound, Eye, EyeOff, Globe, Info, PanelsTopLeft } from 'lucide-react';
 
+const LOGO_SRC = '/logo-big.png';
+
 export default function AuthPage() {
   const location = useLocation();
   const oauthMessage = useMemo(() => {
@@ -81,9 +83,7 @@ export default function AuthPage() {
         
         {/* Logo & Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl mb-6 shadow-[0_0_30px_rgba(10,102,194,0.3)] transform hover:scale-105 transition-transform duration-300">
-            <span className="text-white text-3xl font-display font-bold tracking-tighter">L</span>
-          </div>
+          <img src={LOGO_SRC} alt="Link & Learn" className="mx-auto mb-6 h-16 w-16 rounded-2xl object-contain shadow-[0_0_30px_rgba(111,66,193,0.3)] transform hover:scale-105 transition-transform duration-300" />
           <h1 className="text-3xl font-display font-bold text-slate-900 mb-2 tracking-tight">Link & Learn</h1>
           <p className="text-slate-500 text-sm font-medium">Empowering the Education Ecosystem</p>
         </div>

@@ -3,6 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { AlertCircle, Eye, EyeOff, Info } from 'lucide-react';
 import { resetPassword } from '../../api/auth';
 
+const LOGO_SRC = '/logo-big.png';
+
 export default function ResetPasswordPage() {
   const [params] = useSearchParams();
   const token = useMemo(() => params.get('token') || '', [params]);
@@ -42,9 +44,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#FAF9F6] px-4 text-slate-900">
       <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white/90 p-8 shadow-2xl backdrop-blur-xl">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-600 text-2xl font-bold text-white shadow-lg">
-            L
-          </div>
+          <img src={LOGO_SRC} alt="Link & Learn" className="mx-auto mb-5 h-14 w-14 rounded-2xl object-contain shadow-lg" />
           <h1 className="text-2xl font-display font-bold">Create new password</h1>
           <p className="mt-2 text-sm text-slate-500">Choose a password with at least 6 characters.</p>
         </div>
